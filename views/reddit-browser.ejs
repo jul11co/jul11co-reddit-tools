@@ -1,0 +1,448 @@
+<html>
+  <head>
+    <title>Reddit Archive Browser</title>
+
+    <meta name="referrer" content="no-referrer">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- <link rel="stylesheet" href="/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/css/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="/css/font-awesome.min.css">
+    <link rel="stylesheet" href="/css/animate.css"> -->
+
+    <link rel="stylesheet" href="/css/app.min.css">
+    <link rel="stylesheet" href="/css/reddit-browser.css">
+
+    <!-- <script src="/js/jquery-3.2.1.min.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script src="/js/jquery.lazyload.min.js"></script>
+    <script src="/js/lazysizes.min.js"></script>
+    <script src="/js/socket.io.slim.js"></script>
+    <script src="/js/moment.min.js"></script>
+    <script src="/js/snuownd.min.js"></script> -->
+
+    <script src="/js/app.min.js"></script>
+    <script src="/js/reddit-browser.js"></script>
+
+  </head>
+  <body>
+
+    <div class="container">
+
+      <h3 style="text-align: center;">
+        <span class="text-primary"><i class="fa fa-reddit fa-fw"></i> <a href="/" style="text-decoration: none;">Reddit Archive Browser</a></span>
+      </h3>
+
+      <div id="sidebar">
+        <div class="row">
+          <div class="col-md-12">
+              <p>Subreddits (<%=subreddits.length%>): <a href="/?reload_subreddits=1" class="btn btn-default" title="Reload subreddit list"><i class="fa fa-refresh fa-fw"></i></a></p>
+
+            <%if (starred_subreddits.length) {%>
+              <div class="list-group starred-subreddits">
+              <%starred_subreddits.forEach(function(subreddit,idx){%>
+                <a class="list-group-item <%if(subreddit.name == current_subreddit){%>active<%}%>" href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.nsfw){%><span class="label label-danger">NSFW</span><%}%> <span><i class="fa fa-star fa-fw"></i></span></a>
+              <%});%>
+              </div>
+            <%}%>
+
+            <%if (unstarred_subreddits.length) {%>
+              <%if (!subreddit_grouped) {%>
+              <div class="list-group all-subreddits">
+                <%unstarred_subreddits.forEach(function(subreddit,idx){%>
+                <a class="list-group-item <%if(subreddit.name == current_subreddit){%>active<%}%>" href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.nsfw){%><span class="label label-danger">NSFW</span><%}%> </a>
+                <%});%>
+              </div>
+              <%} else {%>
+              <div class="list-group all-subreddits">
+                <%for(var group_name in subreddit_groups){%>
+                <%  var group = subreddit_groups[group_name];%>
+                <a class="list-group-item sub" href="#"><%=group_name%> <span class="badge badge-primary"><%=group.length%></span> </a>
+                <ul class="sub-items">
+                  <%group.forEach(function(subreddit,idx){%>
+                  <a class="list-group-item <%if(subreddit.name == current_subreddit){%>active<%}%>" href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.nsfw){%><span class="label label-danger">NSFW</span><%}%> </a>
+                  <%});%>
+                </ul>
+                <%}%>
+              </div>
+              <%}%>
+            <%}%>
+            
+          </div>
+        </div>
+      </div>
+
+      <div id="main-content">
+      <div class="row">
+        <div class="col-md-12">
+
+        <%if (subreddits && subreddits.length) {%>
+        <div id="subreddits-selection" style="margin: 15px 0;">
+          <span>Select subreddit (<%=subreddits.length%>): </span>
+          <div class="dropdown" style="display: inline-block;">
+            <button class="btn btn-default dropdown-toggle" type="button" data-toggle="dropdown">/r/<%=current_subreddit%>
+            <span class="caret"></span></button>
+            <ul class="dropdown-menu scrollable-menu">
+              <%subreddits.forEach(function(subreddit,idx){%>
+                <%if (subreddit.name == current_subreddit) {%>
+              <li class="active"><a href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.starred){%><span><i class="fa fa-star fa-fw"></i></span><%}%></a></li>
+                <%}else{%>
+              <li><a href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.starred){%><span><i class="fa fa-star fa-fw"></i></span><%}%></a></li>
+                <%}%>
+              <%});%>
+            </ul>
+          </div>
+          <a href="/?reload_subreddits=1" class="btn btn-default" title="Reload subreddit list"><i class="fa fa-refresh fa-fw"></i></a>
+        </div>
+        <%}%>
+
+        <%var current_subreddit_starred = false;
+        subreddits.forEach(function(subreddit){
+          if (subreddit.name == current_subreddit && subreddit.starred) {
+            current_subreddit_starred = true;
+          }
+        });%>
+        <h4><a href="https://www.reddit.com/r/<%=current_subreddit%>" target="_blank">/r/<%=current_subreddit%></a> <small class="hidden" id="subreddit-status"></small> <a href="#" class="btn btn-default toggle-this-subreddit-star" data-subreddit="<%=current_subreddit%>" data-starred="<%=(current_subreddit_starred?'true':'false')%>" title="Toggle this subreddit star"><%if(current_subreddit_starred){%><i class="fa fa-star fa-fw"></i><%}else{%><i class="fa fa-star-o fa-fw"></i><%}%></a> <a href="#" id="toggle-search-post-form" class="btn btn-default" title="Toggle search"><i class="fa fa-search fa-fw"></i></a></h4>
+
+        <div style="margin: 15px auto;">
+          <form id="search-post-form" class="<%if(!query.q){%>hidden<%}%>" role="form" action="/" method="GET">
+            <div class="input-group">
+              <input id="search-query" type="text" name="q" class="form-control" value="<%=query.q||''%>" placeholder="Search posts">
+              <span class="input-group-btn">
+                <button id="search-post-form-submit" class="btn btn-default" type="submit">Search</button>
+              </span>
+            </div>
+          </form>
+        </div>
+
+        <p>
+          <a href="/"><b>All Posts</b> (<%=posts_count%>)</a>,
+          <a href="/?images=1"><b>Images</b> (<%=image_posts_count%>)</a>,
+          <a href="/?videos=1"><b>Videos</b> (<%=video_posts_count%>)</a>,
+          <a href="/?nsfw=1"><b>NSFW</b> (<%=nsfw_posts_count%>)</a>,
+          <a href="/?self=1"><b>Self</b> (<%=self_posts_count%>)</a>,
+          <a href="/?favorites=1"><b>Favorites</b> (<%=favorite_posts_count%>)</a>
+        </p>
+
+        <%if (popular_subreddits && popular_subreddits.length) {%>
+        <p>
+          Popular Subreddits: 
+          <%popular_subreddits.forEach(function(subreddit,idx){%>
+          <a href="/?subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> (<%=subreddit.posts_count%>)</a><%if(idx<popular_subreddits.length-1){%>,<%}%>
+          <%});%>
+        </p>
+         <%}%>
+        <%if (popular_authors && popular_authors.length) {%>
+        <p>
+          Popular Authors: 
+          <%popular_authors.forEach(function(author,idx){%>
+          <a href="/?author=<%=author.name%>">/u/<%=author.name%> (<%=author.posts_count%>)</a><%if(idx<popular_authors.length-1){%>,<%}%>
+          <%});%>
+        </p>
+         <%}%>
+        <%if (popular_domains && popular_domains.length) {%>
+        <p>
+          Popular Domains: 
+          <%popular_domains.forEach(function(domain,idx){%>
+          <a href="/?domain=<%=domain.name%>"><%=domain.name%> (<%=domain.posts_count%>)</a><%if(idx<popular_domains.length-1){%>,<%}%>
+          <%});%>
+        </p>
+         <%}%>
+        <%if (popular_tags && popular_tags.length) {%>
+        <p>
+          Popular Tags: 
+          <%popular_tags.forEach(function(tag,idx){%>
+          <a href="/?tag=<%=tag.name%>">#<%=tag.name%> (<%=tag.posts_count%>)</a><%if(idx<popular_tags.length-1){%>,<%}%>
+          <%});%>
+        </p>
+         <%}%>
+
+        <%if (query.images) {%>
+        <h3>Images</h3>
+        <%}else if (query.videos) {%>
+        <h3>Videos</h3>
+        <%}else if (query.nsfw) {%>
+        <h3>NFSW Posts</h3>
+        <%}else if (query.self) {%>
+        <h3>Self Posts</h3>
+        <%}else if (query.favorites) {%>
+        <h3>Favorite Posts</h3>
+        <%}else if (query.author) {%>
+        <h3><span style="color: grey;">Author:</span> /u/<%=query.author%></h3>
+        <%}else if (query.subreddit) {%>
+        <h3><span style="color: grey;">Subreddit:</span> /r/<%=query.subreddit%></h3>
+        <%}else if (query.domain) {%>
+        <h3><span style="color: grey;">Domain:</span> <%=query.domain%></h3>
+        <%}else if (query.tag) {%>
+        <h3><span style="color: grey;">Tag:</span> #<%=query.tag%></h3>
+        <%}else if (query.q) {%>
+        <h3><span style="color: grey;">Search:</span> <%=query.q%></h3>
+        <%} else {%>
+        <h3>All Posts</h3>
+        <%}%>
+
+        <%if (count != 1) {%>
+        <h5><%=count%> Posts</h5>
+        <%} else {%>
+        <h5>1 Post</h5>
+        <%}%>
+
+        <%
+        var base_comp = '';
+        if (query.images){
+          base_comp = 'images=1';
+        } else if (query.videos) {
+          base_comp = 'videos=1';
+        } else if (query.nsfw) {
+          base_comp = 'nsfw=1';
+        } else if (query.self) {
+          base_comp = 'self=1';
+        } else if (query.favorites) {
+          base_comp = 'favorites=1';
+        } else if (query.author) {
+          base_comp = 'author='+query.author;
+        } else if (query.subreddit) {
+          base_comp = 'subreddit='+query.subreddit;
+        } else if (query.domain) {
+          base_comp = 'domain='+query.domain;
+        } else if (query.tag) {
+          base_comp = 'tag='+encodeURIComponent(query.tag);
+        } else if (query.q) {
+          base_comp = 'q='+encodeURIComponent(query.q);
+        }
+        %>
+        
+        <%var query_skip = (query.skip ? parseInt(query.skip) : 0);%>
+        <%var next_skip = 0;%>
+        <%if (count>(query_skip+100)){%>
+        <%next_skip = query_skip + 100;%>
+        <p><%=(query_skip+1)%>-<%=(query_skip+100)%>, <a href="/?<%=base_comp%>&skip=<%=next_skip%>">more <%=(count-next_skip)%> posts...</a></p>
+        <%}else if (query_skip>0){%>
+        <p><%=(query_skip+1)%>-<%=count%></p>
+        <%}%>
+
+        <div style="overflow-x: auto;">
+        <table id="items" class="table table-hover table-responsive" style="font-size: 14px;">
+          <thead class="hidden-sm hidden-xs">
+            <tr>
+              <th style="max-width: 500px;">
+                <%if (!query.sort||query.sort=='title'){%>
+                  <%if(query.order=='desc'){%>
+                <a href="/?<%=base_comp%>&sort=title&order=asc">Title</a>
+                <i class="fa fa-angle-down fa-fw" style="color: grey;"></i>
+                  <%}else{%>
+                <a href="/?<%=base_comp%>&sort=title&order=desc">Title</a>
+                <i class="fa fa-angle-up fa-fw" style="color: grey;"></i>
+                  <%}%>
+                <%}else{%>
+                <a href="/?<%=base_comp%>&sort=title&order=desc">Title</a>
+                <%}%>
+              </th>
+              <th></th>
+              <!-- <th class="hidden-xs hidden-sm">
+                <%if (query.sort=='author'){%>
+                  <%if(query.order=='desc'){%>
+                <a href="/?<%=base_comp%>&sort=author&order=asc">Author</a>
+                <i class="fa fa-angle-down fa-fw" style="color: grey;"></i>
+                  <%}else{%>
+                <a href="/?<%=base_comp%>&sort=author&order=desc">Author</a>
+                <i class="fa fa-angle-up fa-fw" style="color: grey;"></i>
+                  <%}%>
+                <%}else{%>
+                <a href="/?<%=base_comp%>&sort=author&order=desc">Author</a>
+                <%}%>
+              </th> -->
+              <th class="hidden-xs hidden-sm">
+                <%if (query.sort=='created'){%>
+                  <%if(query.order=='asc'){%>
+                <a href="/?<%=base_comp%>&sort=created&order=desc">Date Created</a>
+                <i class="fa fa-angle-up fa-fw" style="color: grey;"></i>
+                  <%}else{%>
+                <a href="/?<%=base_comp%>&sort=created&order=asc">Date Created</a>
+                <i class="fa fa-angle-down fa-fw" style="color: grey;"></i>
+                  <%}%>
+                <%}else{%>
+                <a href="/?<%=base_comp%>&sort=created&order=desc">Date Created</a>
+                <%}%>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+
+          <%
+          function getPostType(post_hint){
+            if (post_hint=='rich:video') return 'rich-video';
+            else if (post_hint=='hosted:video') return 'hosted-video';
+            else if (post_hint) return post_hint;
+            return 'link';
+          }
+          %>
+          <%posts.forEach(function(post, idx){%>
+            <tr class="item-post item-post-<%=getPostType(post.post_hint)%>" 
+              data-post-id="<%=post.id%>" 
+              data-post-permalink="https://www.reddit.com<%=post.permalink%>" 
+              data-post-link="<%=post.url%>" 
+              data-post-title="<%=post.title%>" 
+              data-post-author="<%=post.author%>" 
+              data-post-subreddit="<%=post.subreddit%>" 
+              data-post-created-utc="<%=post.created_utc%>"
+              data-post-self="<%=post.is_self?'true':'false'%>"
+              data-post-favorite="<%=post.favorited?'true':'false'%>">
+              <a id="<%=post.id%>"></a>
+              <td style="max-width: 500px;">
+                <i class="fa fa-reddit fa-fw" style="color: grey;"></i> <a style="color: black;text-orientation: none;" class="open-external-link" href="https://reddit.com<%=post.permalink%>" target="_blank" title="<%=post.title%>"><b><%=ellipsisMiddle(post.title,60)%></b></a> 
+                <p class="post-info-extra">
+                  <%if (post.is_self){%><span class="label label-default">Self</span><%}%> 
+                  <%if (post.over_18){%><span class="label label-danger">NSFW</span><%}%> 
+                  <!-- <span class="label label-default"><%=post.post_hint%></span> -->
+                  <%if (post.post_hint=='self'){%><i class="fa fa-reddit fa-fw" style="color: grey;"></i>
+                  <%}else if (post.post_hint=='image'){%><i class="fa fa-picture-o fa-fw" style="color: grey;"></i>
+                  <%}else if (post.post_hint=='video'){%><i class="fa fa-file-video-o fa-fw" style="color: grey;"></i>
+                  <%}else if (post.post_hint=='link'){%><i class="fa fa-external-link fa-fw" style="color: grey;"></i>
+                  <%}else if (post.post_hint){%><span class="label label-default"><%=post.post_hint%></span>
+                  <%}else{%><i class="fa fa-external-link fa-fw" style="color: grey;"></i>
+                  <%}%>
+                  <a href="<%=post.url%>" class="open-external-link" target="_blank" style="color: grey;"><%=ellipsisMiddle(post.url,80)%></a>
+                </p>
+                <%if (post.selftext){%><blockquote style="font-size: 14px;margin-bottom: 0;"><%=post.selftext%></blockquote><%}%> 
+                <p class="post-info-extra">
+                  <a href="/?subreddit=<%=post.subreddit%>" class="open-external-link">/r/<%=post.subreddit%></a> &middot; <a href="/?author=<%=post.author%>" class="open-external-link">/u/<%=post.author%></a> <%if (post.num_comments){%>&middot; <span><i class="fa fa-comment fa-fw" style="color: grey;"></i> <%=post.num_comments%></span><%}%>
+                </p>
+                <%if (post.tags && post.tags.length){%>
+                <p class="post-info-extra">
+                  <span><i class="fa fa-hashtag fa-fw" style="color: grey;"></i></span>
+                  <%post.tags.forEach(function(tag_name,idx){%>
+                  <a href="/?tag=<%=tag_name%>" class="open-external-link">#<%=tag_name%></a><%if(idx<post.tags.length-1){%>,<%}%>
+                  <%});%>
+                </p>
+                <%}%>
+                <%if (post.created_utc){%>
+                <p class="post-info-extra hidden-lg hidden-md">
+                  <span><i class="fa fa-clock-o fa-fw" style="color: grey;"></i></span>
+                  <%=moment(post.created_utc*1000).format('MMM DD, YYYY hh:mm A')%>
+                </p>
+                <%}%>
+              </td>
+              <td>
+                <%if (post.thumbnail && post.thumbnail.indexOf('http')==0){%>
+                  <img class="lazyload" src="data:image/gif;base64,R0lGODdhAQABAPAAAMPDwwAAACwAAAAAAQABAAACAkQBADs=" 
+                    data-src="/image?src=<%=encodeURIComponent(post.thumbnail)%>" height="<%=post.thumbnail_height%>" width="<%=post.thumbnail_width||post.thumbnail_height%>" />
+                <%}%>
+              </td>
+              <!-- <td class="hidden-xs hidden-sm" style="color: grey;"><a href="/?author=<%=post.author%>">/u/<%=post.author%></a></td> -->
+              <td class="hidden-xs hidden-sm date" style="color: grey;font-size: 12px;" data-created-utc="<%=post.created_utc%>"><%if (post.created_utc){%><%=moment(post.created_utc*1000).format('MMM DD, YYYY hh:mm A')%><%}%></td>
+            </tr>
+          <%})%>
+
+          </tbody>
+        </table>
+        </div>
+
+        <%if (next_skip>0 && count>next_skip){%>
+        <p><a href="/?<%=base_comp%>&skip=<%=next_skip%>">and more <%=(count-next_skip)%> posts...</a></p>
+        <%}%>
+
+        </div>
+      </div><!-- row -->
+      </div><!-- main-content -->
+
+    </div><!-- container -->
+
+    <!-- Modal -->
+    <div id="previewModal" class="modal fade" role="dialog">
+      <div class="modal-dialog">
+
+        <!-- Modal content-->
+        <div class="modal-content">
+
+          <div class="modal-header hidden">
+            <button type="button" class="close" data-dismiss="modal">&times;</button>
+            <h4 class="modal-title"></h4>
+          </div>
+
+          <div class="modal-body" id="post-preview-body">
+            <div id="post-preview-header">
+              <span id="post-preview-file-info-container"><a id="post-preview-file-info-toggle" href="#" style="color: white;"><!-- <i class="fa fa-info-circle fa-fw"></i> --></a> <span id="post-preview-file-info"></span></span>
+              
+              <span id="post-preview-header-nav">
+                <a href="#" id="post-preview-prev" class="post-preview-button" title="Previous post (Left)"><i class="fa fa-chevron-left fa-fw"></i></a>
+                <span id="post-preview-subtitle"></span>
+                <a href="#" id="post-preview-next" class="post-preview-button" title="Next post (Right)"><i class="fa fa-chevron-right fa-fw"></i></a>
+              </span>
+
+              <span id="post-preview-top-right" class="hidden"><a id="post-preview-close" href="#" class="post-preview-button" title="Close"><i class="fa fa-times fa-fw"></i></a></span>
+            </div>
+            
+            <div id="post-preview-actions">
+              <a id="post-preview-close-button" href="#" target="_blank" 
+                class="post-preview-button post-preview-big-button" 
+                title="Close preview (esc)"><i class="fa fa-times fa-lg fa-fw"></i></a>
+                  
+              <a id="post-preview-external-link-button" href="#" 
+                target="_blank" class="post-preview-button post-preview-big-button" 
+                title="Open external link"><i class="fa fa-external-link fa-lg fa-fw"></i></a>
+
+              <a id="post-preview-open-reddit-button" href="#" target="_blank" 
+                class="post-preview-button post-preview-big-button" 
+                title="Open this post on Reddit"><i class="fa fa-reddit fa-lg fa-fw"></i></a>
+              
+              <a id="post-preview-image-resize-button" href="#" 
+                class="post-preview-button post-preview-big-button"
+                title="Toggle post image size (s)"><i class="fa fa-arrows fa-lg fa-fw"></i></a> 
+
+              <a id="post-preview-favorite-button" href="#" target="_blank" 
+                class="post-preview-button post-preview-big-button" 
+                title="Toggle favorite this post (f)"><i class="fa fa-heart-o fa-lg fa-fw"></i></a>
+                  
+              <a id="post-preview-download-button" href="#" 
+                class="post-preview-button post-preview-big-button <%if(!enable_download){%>hidden<%}%>" 
+                title="Download this post (d)"><i class="fa fa-download fa-lg fa-fw"></i></a>
+            </div>
+
+            <div id="post-preview-notifications">
+              <span id="post-preview-favorite-notification" class="post-preview-notification hidden"></span>
+
+              <span id="post-preview-download-notification" class="post-preview-notification hidden"></span>
+            </div>
+
+            <div id="post-preview-container">
+
+              <div id="post-preview-title-container">
+                <span id="post-preview-title"></span>
+              </div>
+
+              <div id="post-preview-content">
+              </div>
+
+              <div id="post-preview-left"><span style="display: inline-block;height: 100%;vertical-align: middle;"></span><a href="#" class="post-preview-button" title="Prev post (Left)"><i class="fa fa-chevron-left fa-2x fa-fw"></i></a></div> 
+
+              <div id="post-preview-right"><span style="display: inline-block;height: 100%;vertical-align: middle;"></span><a href="#" class="post-preview-button" title="Next post (Right)"><i class="fa fa-chevron-right fa-2x fa-fw"></i></a></div> 
+
+            </div>
+
+            <div id="post-preview-comments-container" class="fixed">
+              <div style="margin-bottom: 5px;">
+                <a id="post-preview-comments-toggle" href="#" class="post-preview-button post-preview-small-button" title="Toggle comments (c)"><i class="fa fa-comments fa-fw"></i> <span id="post-preview-num-comments" style="font-size: 12px;"></span></a>
+                
+                <a id="post-preview-comments-hide" href="#" class="hidden post-preview-button post-preview-small-button"><i class="fa fa-angle-left fa-fw"></i></a>
+                
+                <a id="post-preview-comments-show" href="#" class="hidden post-preview-button post-preview-small-button"><i class="fa fa-angle-right fa-fw"></i></a>
+
+                <a id="post-preview-comments-inline" href="#" class="hidden post-preview-button post-preview-small-button" title="Toggle inline comments"><i class="fa fa-tasks fa-fw"></i></a>
+
+                <a id="post-preview-comments-align" href="#" class="hidden post-preview-button post-preview-small-button" title="Toggle comments alignment"><i class="fa fa-long-arrow-right fa-fw"></i></a>
+              </div>
+
+              <div id="post-preview-comments" class="hidden">
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </body>
+</html>

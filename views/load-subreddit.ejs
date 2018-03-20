@@ -1,0 +1,158 @@
+<html>
+  <head>
+    <title>Reddit Archive Browser</title>
+
+    <meta name="referrer" content="no-referrer">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- <link rel="stylesheet" href="/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/css/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="/css/font-awesome.min.css">
+    <link rel="stylesheet" href="/css/animate.css"> -->
+
+    <link rel="stylesheet" href="/css/app.min.css">
+    <link rel="stylesheet" href="/css/reddit-browser.css">
+
+    <!-- <script src="/js/jquery-3.2.1.min.js"></script>
+    <script src="/js/bootstrap.min.js"></script>
+    <script src="/js/jquery.lazyload.min.js"></script>
+    <script src="/js/lazysizes.min.js"></script>
+    <script src="/js/socket.io.slim.js"></script>
+    <script src="/js/moment.min.js"></script>
+    <script src="/js/snuownd.min.js"></script> -->
+
+    <script src="/js/app.min.js"></script>
+    <script src="/js/reddit-browser.js"></script>
+
+  </head>
+  <body>
+
+    <div class="container">
+
+      <h3 style="text-align: center;">
+        <span class="text-primary"><i class="fa fa-reddit fa-fw"></i> <a href="/" style="text-decoration: none;">Reddit Archive Browser</a></span>
+      </h3>
+
+      <div id="sidebar">
+        <div class="row">
+          <div class="col-md-12">
+              <p>Subreddits (<%=subreddits.length%>): <a href="/?reload_subreddits=1" class="btn btn-default" title="Reload subreddit list"><i class="fa fa-refresh fa-fw"></i></a></p>
+
+            <%if (starred_subreddits.length) {%>
+              <div class="list-group starred-subreddits">
+              <%starred_subreddits.forEach(function(subreddit,idx){%>
+                <a class="list-group-item <%if(subreddit.name == current_subreddit){%>active<%}%>" href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.nsfw){%><span class="label label-danger">NSFW</span><%}%> <span><i class="fa fa-star fa-fw"></i></span></a>
+              <%});%>
+              </div>
+            <%}%>
+
+            <%if (unstarred_subreddits.length) {%>
+              <%if (!subreddit_grouped) {%>
+              <div class="list-group all-subreddits">
+                <%unstarred_subreddits.forEach(function(subreddit,idx){%>
+                <a class="list-group-item <%if(subreddit.name == current_subreddit){%>active<%}%>" href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.nsfw){%><span class="label label-danger">NSFW</span><%}%> </a>
+                <%});%>
+              </div>
+              <%} else {%>
+              <div class="list-group all-subreddits">
+                <%for(var group_name in subreddit_groups){%>
+                <%  var group = subreddit_groups[group_name];%>
+                <a class="list-group-item sub" href="#"><%=group_name%> <span class="badge badge-primary"><%=group.length%></span> </a>
+                <ul class="sub-items">
+                  <%group.forEach(function(subreddit,idx){%>
+                  <a class="list-group-item <%if(subreddit.name == current_subreddit){%>active<%}%>" href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.nsfw){%><span class="label label-danger">NSFW</span><%}%> </a>
+                  <%});%>
+                </ul>
+                <%}%>
+              </div>
+              <%}%>
+            <%}%>
+            
+          </div>
+        </div>
+      </div>
+
+      <div id="main-content">
+      <div class="row">
+        <div class="col-md-12">
+
+        <%if (subreddits && subreddits.length) {%>
+        <div id="subreddits-selection" style="margin: 15px 0;">
+          <span>Select subreddit (<%=subreddits.length%>): </span>
+          <div class="dropdown" style="display: inline-block;">
+            <button class="btn btn-default dropdown-toggle" type="button" data-toggle="dropdown">/r/<%=current_subreddit%>
+            <span class="caret"></span></button>
+            <ul class="dropdown-menu scrollable-menu">
+              <%subreddits.forEach(function(subreddit,idx){%>
+                <%if (subreddit.name == current_subreddit) {%>
+              <li class="active"><a href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.starred){%><span><i class="fa fa-star fa-fw"></i></span><%}%></a></li>
+                <%}else{%>
+              <li><a href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.starred){%><span><i class="fa fa-star fa-fw"></i></span><%}%></a></li>
+                <%}%>
+              <%});%>
+            </ul>
+          </div>
+          <a href="/?reload_subreddits=1" class="btn btn-default" title="Reload subreddit list"><i class="fa fa-refresh fa-fw"></i></a>
+        </div>
+        <%}%>
+
+        <%var current_subreddit_starred = false;
+        subreddits.forEach(function(subreddit){
+          if (subreddit.name == current_subreddit && subreddit.starred) {
+            current_subreddit_starred = true;
+          }
+        });%>
+        <h4>
+          Loading subreddit: <a href="https://www.reddit.com/r/<%=query.load_subreddit%>" target="_blank">/r/<%=query.load_subreddit%></a> ...
+        </h4>
+
+        <span class="hidden" id="reload-subreddit-name"><%=query.load_subreddit%></span>
+        <blockquote id="reloading-subreddit-log">
+        </blockquote>
+        </div>
+
+      </div><!-- row -->
+      </div><!-- main-content -->
+
+    </div><!-- container -->
+
+    <script type="text/javascript">
+      $(document).ready(function() {
+
+        /* Realtime Communication */
+
+        var socket = io();
+        socket.on('reloading', function(data){
+          $('#reloading-subreddit-log').append('<p class="text-primary">Reloading...</p>');
+        });
+        socket.on('reload-done', function(data){
+          $('#reloading-subreddit-log').append('<p class="text-primary">Reloading... Done</p>');
+          setTimeout(function() {
+            window.location.href = '/';
+          }, 2000);
+        });
+        socket.on('reloading-log', function(data){
+          if (data && data.text) {
+            $('#reloading-subreddit-log').append('<p class="text-success">'+data.text+'</p>');
+          }
+        });
+        socket.on('reloading-error', function(data){
+          if (data && data.error) {
+            $('#reloading-subreddit-log').text('<p class="text-danger">'+data.error+'</p>');
+          }
+        });
+
+        if ($('#reload-subreddit-name').length) {
+          var reload_subreddit_name = $('#reload-subreddit-name').text();
+          if (reload_subreddit_name && reload_subreddit_name != '') {
+            socket.emit('reload-subreddit', {
+              subreddit_name: reload_subreddit_name
+            });
+          }
+        }
+
+      });
+    </script>
+
+  </body>
+</html>

@@ -29,7 +29,7 @@
 
     <div class="container">
 
-      <h3 style="text-align: center;">
+      <h3>
         <span class="text-primary"><i class="fa fa-reddit fa-fw"></i> <a href="/" style="text-decoration: none;">Reddit Archive Browser</a></span>
       </h3>
 
@@ -115,47 +115,67 @@
           </form>
         </div>
 
+        <ul class="nav nav-tabs" style="margin-bottom: 10px;">
+          <li class="active"><a data-toggle="tab" href="#posts-content">Posts</a></li>
+          <li><a data-toggle="tab" href="#subreddits-content">Subreddits</a></li>
+          <li><a data-toggle="tab" href="#authors-content">Authors</a></li>
+          <li><a data-toggle="tab" href="#domains-content">Domains</a></li>
+          <li><a data-toggle="tab" href="#tags-content">Tags</a></li>
+        </ul>
+
+        <div class="tab-content">
+          <div id="subreddits-content" class="tab-pane fade">
+          <%if (popular_subreddits && popular_subreddits.length) {%>
+            <h3>Popular Subreddits</h3>
+            <p>
+              <%popular_subreddits.forEach(function(subreddit,idx){%>
+              <a href="/?subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> (<%=subreddit.posts_count%>)</a><%if(idx < popular_subreddits.length-1){%>,<%}%>
+              <%});%>
+            </p>
+          <%}%>
+          </div>
+          <div id="authors-content" class="tab-pane fade">
+          <%if (popular_authors && popular_authors.length) {%>
+            <h3>Popular Authors</h3>
+            <p>
+              <%popular_authors.forEach(function(author,idx){%>
+              <a href="/?author=<%=author.name%>">/u/<%=author.name%> (<%=author.posts_count%>)</a><%if(idx < popular_authors.length-1){%>,<%}%>
+              <%});%>
+            </p>
+         <%}%>
+          </div>
+          <div id="domains-content" class="tab-pane fade">
+          <%if (popular_domains && popular_domains.length) {%>
+            <h3>Popular Domains</h3>
+            <p>
+              <%popular_domains.forEach(function(domain,idx){%>
+              <a href="/?domain=<%=domain.name%>"><%=domain.name%> (<%=domain.posts_count%>)</a><%if(idx < popular_domains.length-1){%>,<%}%>
+              <%});%>
+            </p>
+          <%}%>
+          </div>
+          <div id="tags-content" class="tab-pane fade">
+          <%if (popular_tags && popular_tags.length) {%>
+            <h3>Popular Tags</h3>
+            <p>
+              <%popular_tags.forEach(function(tag,idx){%>
+              <a href="/?tag=<%=tag.name%>">#<%=tag.name%> (<%=tag.posts_count%>)</a><%if(idx < popular_tags.length-1){%>,<%}%>
+              <%});%>
+            </p>
+          <%}%>
+          </div>
+
+        <div id="posts-content" class="tab-pane fade in active">
+
         <p>
           <a href="/"><b>All Posts</b> (<%=posts_count%>)</a>,
           <a href="/?images=1"><b>Images</b> (<%=image_posts_count%>)</a>,
           <a href="/?videos=1"><b>Videos</b> (<%=video_posts_count%>)</a>,
           <a href="/?nsfw=1"><b>NSFW</b> (<%=nsfw_posts_count%>)</a>,
           <a href="/?self=1"><b>Self</b> (<%=self_posts_count%>)</a>,
+          <a href="/?links=1"><b>Links</b> (<%=link_posts_count%>)</a>,
           <a href="/?favorites=1"><b>Favorites</b> (<%=favorite_posts_count%>)</a>
         </p>
-
-        <%if (popular_subreddits && popular_subreddits.length) {%>
-        <p>
-          Popular Subreddits: 
-          <%popular_subreddits.forEach(function(subreddit,idx){%>
-          <a href="/?subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> (<%=subreddit.posts_count%>)</a><%if(idx<popular_subreddits.length-1){%>,<%}%>
-          <%});%>
-        </p>
-         <%}%>
-        <%if (popular_authors && popular_authors.length) {%>
-        <p>
-          Popular Authors: 
-          <%popular_authors.forEach(function(author,idx){%>
-          <a href="/?author=<%=author.name%>">/u/<%=author.name%> (<%=author.posts_count%>)</a><%if(idx<popular_authors.length-1){%>,<%}%>
-          <%});%>
-        </p>
-         <%}%>
-        <%if (popular_domains && popular_domains.length) {%>
-        <p>
-          Popular Domains: 
-          <%popular_domains.forEach(function(domain,idx){%>
-          <a href="/?domain=<%=domain.name%>"><%=domain.name%> (<%=domain.posts_count%>)</a><%if(idx<popular_domains.length-1){%>,<%}%>
-          <%});%>
-        </p>
-         <%}%>
-        <%if (popular_tags && popular_tags.length) {%>
-        <p>
-          Popular Tags: 
-          <%popular_tags.forEach(function(tag,idx){%>
-          <a href="/?tag=<%=tag.name%>">#<%=tag.name%> (<%=tag.posts_count%>)</a><%if(idx<popular_tags.length-1){%>,<%}%>
-          <%});%>
-        </p>
-         <%}%>
 
         <%if (query.images) {%>
         <h3>Images</h3>
@@ -165,6 +185,8 @@
         <h3>NFSW Posts</h3>
         <%}else if (query.self) {%>
         <h3>Self Posts</h3>
+        <%}else if (query.link) {%>
+        <h3>Link Posts</h3>
         <%}else if (query.favorites) {%>
         <h3>Favorite Posts</h3>
         <%}else if (query.author) {%>
@@ -197,6 +219,8 @@
           base_comp = 'nsfw=1';
         } else if (query.self) {
           base_comp = 'self=1';
+        } else if (query.links) {
+          base_comp = 'links=1';
         } else if (query.favorites) {
           base_comp = 'favorites=1';
         } else if (query.author) {
@@ -312,7 +336,7 @@
                 <p class="post-info-extra">
                   <span><i class="fa fa-hashtag fa-fw" style="color: grey;"></i></span>
                   <%post.tags.forEach(function(tag_name,idx){%>
-                  <a href="/?tag=<%=tag_name%>" class="open-external-link">#<%=tag_name%></a><%if(idx<post.tags.length-1){%>,<%}%>
+                  <a href="/?tag=<%=tag_name%>" class="open-external-link">#<%=tag_name%></a><%if(idx < post.tags.length-1){%>,<%}%>
                   <%});%>
                 </p>
                 <%}%>
@@ -343,6 +367,10 @@
         <%}%>
 
         </div>
+
+        </div><!-- posts-content -->
+        </div><!-- tab-content -->
+
       </div><!-- row -->
       </div><!-- main-content -->
 

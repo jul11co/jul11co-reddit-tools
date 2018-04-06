@@ -256,7 +256,7 @@ $(document).ready(function() {
     if (comment.depth) comment_html += ' style="margin-left:' + (5+5*comment.depth) + 'px;"';
     comment_html += '>';
     if (comment.author==post_author) {
-      comment_html += ' <span class="text-primary"><b>' + comment.author + '</b></span>';
+      comment_html += '<b>' + comment.author + '</b> <span class="label label-primary">OP</span>';
     } else {
       comment_html += '<b style="font-size: 12px;">' + comment.author + '</b>';
     }
@@ -299,9 +299,9 @@ $(document).ready(function() {
       }
 
       var op_html = '<span class="post-preview-comment" style="margin-left: 0;">';
-      op_html += '<span class="text-primary"><b>' + post_info.author + 
-        '</b></span> on <a href="https://www.reddit.com/r/' + post_info.subreddit + '" target="_blank"><i>/r/' + 
-        post_info.subreddit + '</i></a>.';
+      op_html += '<b>' + post_info.author + '</b> <span class="label label-primary">OP</span>'+
+        ' on <a href="https://www.reddit.com/r/' + post_info.subreddit + 
+        '" target="_blank"><i>/r/' + post_info.subreddit + '</i></a>.';
       op_html += '<span class="post-preview-comment-body">' + markdownParser.render(post_info.title||'') + '</span>';
       op_html += '<p style="font-size: 12px;margin-bottom: 0;">';
       op_html += '<span><a href="' + post_info.permalink + 
@@ -954,6 +954,9 @@ $(document).ready(function() {
     // } else {
     //   $('#post-preview-title-container').addClass('hidden');
     // }
+    if ($('#post-preview-content').find('video').length) {
+      return;
+    }
     $('#post-preview-actions').toggleClass('hidden');
     $('#post-preview-left a').toggleClass('hidden');
     $('#post-preview-right a').toggleClass('hidden');

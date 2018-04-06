@@ -29,7 +29,7 @@
 
     <div class="container">
 
-      <h3 style="text-align: center;">
+      <h3>
         <span class="text-primary"><i class="fa fa-reddit fa-fw"></i> <a href="/" style="text-decoration: none;">Reddit Archive Browser</a></span>
       </h3>
 
@@ -129,7 +129,7 @@
           $('#reloading-subreddit-log').append('<p class="text-primary">Reloading... Done</p>');
           setTimeout(function() {
             window.location.href = '/';
-          }, 2000);
+          }, 1000);
         });
         socket.on('reloading-log', function(data){
           if (data && data.text) {

@@ -184,6 +184,7 @@ var image_posts_count = 0;
 var video_posts_count = 0;
 var nsfw_posts_count = 0;
 var self_posts_count = 0;
+var link_posts_count = 0;
 var favorite_posts_count = 0;
 
 var latest_created = 0;
@@ -201,6 +202,11 @@ var popular_tags = [];
 var popular_authors = [];
 var popular_subreddits = [];
 var popular_domains = [];
+
+var popular_tags_max_count = 50;
+var popular_authors_max_count = 50;
+var popular_subreddits_max_count = 20;
+var popular_domains_max_count = 30;
 
 ///
 
@@ -561,6 +567,7 @@ var startServer = function(done) {
     if (req.query.videos) condition.post_hint = 'video';
     if (req.query.over_18 || req.query.nsfw) condition.over_18 = true;
     if (req.query.self) condition.is_self = true;
+    if (req.query.links) condition.post_hint = 'link';
     if (req.query.author) condition.author = req.query.author;
     if (req.query.subreddit) condition.subreddit = req.query.subreddit;
     if (req.query.domain) condition.domain = req.query.domain;
@@ -619,6 +626,7 @@ var startServer = function(done) {
       video_posts_count: video_posts_count,
       nsfw_posts_count: nsfw_posts_count,
       self_posts_count: self_posts_count,
+      link_posts_count: link_posts_count,
       favorite_posts_count: favorite_posts_count,
       popular_authors: popular_authors,
       popular_subreddits: popular_subreddits,
@@ -1091,6 +1099,7 @@ function indexPosts(done) {
   video_posts_count = 0;
   nsfw_posts_count = 0;
   self_posts_count = 0;
+  link_posts_count = 0;
   favorite_posts_count = 0;
 
   latest_created = 0;
@@ -1126,6 +1135,7 @@ function indexPosts(done) {
       else if (post.post_hint == 'video') video_posts_count++;
       if (post.over_18) nsfw_posts_count++;
       if (post.is_self) self_posts_count++;
+      if (post.post_hint == 'link') link_posts_count++;
       if (latest_created == 0 || latest_created < post.created_utc) latest_created = post.created;
       if (oldest_created == 0 || oldest_created > post.created_utc) oldest_created = post.created;
       if (post.author) {
@@ -1184,7 +1194,7 @@ function indexPosts(done) {
     console.log('Authors:', authors.length);
     if (io) io.emit('reloading-log', {text: 'Authors: ' + authors.length});
     sortByPostsCount(authors);
-    if (authors.length > 20) popular_authors = authors.slice(0, 20);
+    if (authors.length > popular_authors_max_count) popular_authors = authors.slice(0, popular_authors_max_count);
     else popular_authors = authors.slice();
 
     var subreddits = [];
@@ -1194,7 +1204,7 @@ function indexPosts(done) {
     console.log('Subreddits:', subreddits.length);
     if (io) io.emit('reloading-log', {text: 'Subreddits: ' + subreddits.length});
     sortByPostsCount(subreddits);
-    if (subreddits.length > 20) popular_subreddits = subreddits.slice(0, 20);
+    if (subreddits.length > popular_subreddits_max_count) popular_subreddits = subreddits.slice(0, popular_subreddits_max_count);
     else popular_subreddits = subreddits.slice();
 
     var domains = [];
@@ -1204,7 +1214,7 @@ function indexPosts(done) {
     console.log('Domains:', domains.length);
     if (io) io.emit('reloading-log', {text: 'Domains: ' + domains.length});
     sortByPostsCount(domains);
-    if (domains.length > 20) popular_domains = domains.slice(0, 20);
+    if (domains.length > popular_domains_max_count) popular_domains = domains.slice(0, popular_domains_max_count);
     else popular_domains = domains.slice();
 
     var tags = [];
@@ -1214,7 +1224,7 @@ function indexPosts(done) {
     console.log('Tags:', tags.length);
     if (io) io.emit('reloading-log', {text: 'Tags: ' + tags.length});
     sortByPostsCount(tags);
-    if (tags.length > 20) popular_tags = tags.slice(0, 20);
+    if (tags.length > popular_tags_max_count) popular_tags = tags.slice(0, popular_tags_max_count);
     else popular_tags = tags.slice();
 
     done();
@@ -1369,6 +1379,7 @@ var unloadSubredditData = function(subreddit_dir, done) {
     video_posts_count = 0;
     nsfw_posts_count = 0;
     self_posts_count = 0;
+    link_posts_count = 0;
     favorite_posts_count = 0;
 
     latest_created = 0;

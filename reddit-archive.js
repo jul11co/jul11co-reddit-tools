@@ -27,8 +27,8 @@ function printUsage() {
   console.log('');
   console.log('       reddit-archive --update [--nsfw] [OPTIONS]');
   console.log('       reddit-archive --list [--nsfw]');
-  console.log('       reddit-archive --add <URL> [--scrape-interval=<SECONDS>] [--nsfw] [OPTIONS]');
-  console.log('       reddit-archive --remove <URL>');
+  console.log('       reddit-archive --add <DATA-DIR> <URL> [URL2] [...] [--scrape-interval=<SECONDS>] [--nsfw] [OPTIONS]');
+  console.log('       reddit-archive --remove <DATA-DIR> <URL> [URL2] [...]');
   console.log('');
   console.log('       reddit-archive --import <URL>');
   console.log('       reddit-archive --import --from-html <HTML-FILE>');
@@ -373,7 +373,7 @@ function loadSourcesFromDir(data_dir) {
     for (var subreddit_url in reddit_info) {
       if (!sources_store[subreddit_url]) {
         sources_store[subreddit_url] = reddit_info[subreddit_url];
-        console.log('Added subreddit:', subreddit_url);
+        console.log(chalk.grey(timeStamp()), 'Added subreddit:', subreddit_url);
       }
     }
   }
@@ -387,7 +387,7 @@ function loadSourcesFromDir(data_dir) {
       for (var subreddit_url in reddit_info) {
         if (!sources_store[subreddit_url]) {
           sources_store[subreddit_url] = reddit_info[subreddit_url];
-          console.log('Added subreddit:', subreddit_url);
+          console.log(chalk.grey(timeStamp()), 'Added subreddit:', subreddit_url);
         }
       }
     }
@@ -408,10 +408,10 @@ function saveSourceConfig(source_url, source_config, output_dir) {
 
   if (!reddit_info[source_url]) {
     reddit_info[source_url] = source_config;
-    console.log('Add subreddit: r/' + subreddit);
+    console.log(chalk.grey(timeStamp()), 'Add subreddit: r/' + subreddit);
   } else {
     reddit_info[source_url] = Object.assign(reddit_info[source_url], source_config);
-    console.log('Update subreddit: r/' + subreddit);
+    console.log(chalk.grey(timeStamp()), 'Update subreddit: r/' + subreddit);
   }
   
   // utils.saveToJsonFile(reddit_info, subreddit_config_file);
@@ -532,7 +532,7 @@ function _listSources(options) {
   })
 }
 
-function _addSources(sources_to_add, options) {
+function _addSources(sources_to_add, output_dir, options) {
   var new_sources_count = 0;
 
   for (var i = 0; i < sources_to_add.length; i++) {
@@ -571,7 +571,7 @@ function _addSources(sources_to_add, options) {
         console.log(chalk.grey(timeStamp()), chalk.green('update source'), source_url);
         
         showSourceConfig(source_config);
-        saveSourceConfig(source_url, source_config, output_dir);
+        // saveSourceConfig(source_url, source_config, output_dir);
       }
     } else {
       new_sources_count++;
@@ -587,7 +587,7 @@ function _addSources(sources_to_add, options) {
       sources_store[source_url] = source_config;
 
       showSourceConfig(source_config);
-      saveSourceConfig(source_url, source_config, output_dir);
+      // saveSourceConfig(source_url, source_config, output_dir);
     }
   }
 
@@ -595,8 +595,7 @@ function _addSources(sources_to_add, options) {
   console.log(chalk.grey(timeStamp()), chalk.bold('new sources'), new_sources_count);
 
   if (options.sources_file) {
-    // utils.saveToJsonFile(sources_store, options.sources_file);
-    saveJsonFileSafe(sources_store, options.sources_file);
+    utils.saveToJsonFile(sources_store, options.sources_file);
   }
 }
 
@@ -615,12 +614,11 @@ function _removeSources(sources_to_remove, options) {
     }
   }
 
-  console.log('---');
+  // console.log('---');
   console.log(chalk.grey(timeStamp()), chalk.bold('removed sources'), removed_sources_count);
 
   if (options.sources_file) {
-    // utils.saveToJsonFile(sources_store, options.sources_file);
-    saveJsonFileSafe(sources_store, options.sources_file);
+    utils.saveToJsonFile(sources_store, options.sources_file);
   }
 }
 
@@ -742,7 +740,7 @@ if (options.update || options.update_sources) {
   var output_dir = argv[1] || '.';
 
   options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
-  console.log('Sources file:', options.sources_file);
+  console.log(chalk.grey(timeStamp()), 'Sources file:', options.sources_file);
 
   if (utils.fileExists(options.sources_file)) {
     sources_store = utils.loadFromJsonFile(options.sources_file);
@@ -768,7 +766,7 @@ else if (options.watch || options.watch_sources) {
   var output_dir = argv[1] || '.';
 
   options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
-  console.log('Sources file:', options.sources_file);
+  console.log(chalk.grey(timeStamp()), 'Sources file:', options.sources_file);
 
   if (utils.fileExists(options.sources_file)) {
     sources_store = utils.loadFromJsonFile(options.sources_file);
@@ -790,7 +788,7 @@ else if (options.list || options.list_sources) {
   var output_dir = argv[1] || '.';
 
   options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
-  console.log('Sources file:', options.sources_file);
+  console.log(chalk.grey(timeStamp()), 'Sources file:', options.sources_file);
 
   if (utils.fileExists(options.sources_file)) {
     sources_store = utils.loadFromJsonFile(options.sources_file);
@@ -805,8 +803,15 @@ else if (options.list || options.list_sources) {
   process.exit();
 }
 else if ((options.add || options.add_source) && argv.length) {
+  if (argv.length == 0) {
+    printUsage();
+    return callback();
+  }
+
+  var output_dir = argv[0];
+
   var sources_to_add = [];
-  for (var i = 0; i < argv.length; i++) {
+  for (var i = 1; i < argv.length; i++) {
     if (argv[i].indexOf('http') == 0 && sources_to_add.indexOf(argv[i]) == -1) {
       sources_to_add.push(argv[i].replace('http://reddit.com/', 'https://www.reddit.com/'));
     } else if (argv[i].indexOf('r/') == 0 && sources_to_add.indexOf(argv[i]) == -1) {
@@ -820,10 +825,8 @@ else if ((options.add || options.add_source) && argv.length) {
     return source_url;
   });
 
-  var output_dir = argv[1] || '.';
-
   options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
-  console.log('Sources file:', options.sources_file);
+  console.log(chalk.grey(timeStamp()), 'Sources file:', options.sources_file);
 
   if (utils.fileExists(options.sources_file)) {
     sources_store = utils.loadFromJsonFile(options.sources_file);
@@ -832,13 +835,20 @@ else if ((options.add || options.add_source) && argv.length) {
   //   loadSourcesFromDir(output_dir);
   // }
 
-  _addSources(sources_to_add, options);
+  _addSources(sources_to_add, output_dir, options);
 
   process.exit();
 } 
 else if ((options.remove || options.remove_source) && argv.length) {
+  if (argv.length == 0) {
+    printUsage();
+    return callback();
+  }
+
+  var output_dir = argv[0];
+
   var sources_to_remove = [];
-  for (var i = 0; i < argv.length; i++) {
+  for (var i = 1; i < argv.length; i++) {
     if (argv[i].indexOf('http') == 0 && sources_to_remove.indexOf(argv[i]) == -1) {
       sources_to_remove.push(argv[i].replace('http://reddit.com/', 'https://www.reddit.com/'));
     } else if (argv[i].indexOf('r/') == 0 && sources_to_remove.indexOf(argv[i]) == -1) {
@@ -852,10 +862,8 @@ else if ((options.remove || options.remove_source) && argv.length) {
     return source_url;
   });
 
-  var output_dir = argv[1] || '.';
-
   options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
-  console.log('Sources file:', options.sources_file);
+  console.log(chalk.grey(timeStamp()), 'Sources file:', options.sources_file);
 
   if (utils.fileExists(options.sources_file)) {
     sources_store = utils.loadFromJsonFile(options.sources_file);
@@ -870,17 +878,16 @@ else if ((options.import || options.import_sources) && argv.length) {
   var subredditLinkExtractor = require('./lib/subreddit-link-extractor.js')
 
   var updateSourcesFile = function(subreddit_links) {
-
     var output_dir = argv[1] || '.';
 
     options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
-    console.log('Sources file:', options.sources_file);
+    console.log(chalk.grey(timeStamp()), 'Sources file:', options.sources_file);
 
     if (utils.fileExists(options.sources_file)) {
       sources_store = utils.loadFromJsonFile(options.sources_file);
     }
 
-    _addSources(subreddit_links, options);
+    _addSources(subreddit_links, output_dir, options);
 
     process.exit();
   }
@@ -895,7 +902,7 @@ else if ((options.import || options.import_sources) && argv.length) {
         console.log(err);
         process.exit(1);
       }
-      console.log('Subreddit links:', subreddit_links.length);
+      console.log(chalk.grey(timeStamp()), 'Subreddit links:', subreddit_links.length);
       if (subreddit_links.length) updateSourcesFile(subreddit_links);
     });
   } else if (argv[0].indexOf('http') == 0) {
@@ -907,7 +914,7 @@ else if ((options.import || options.import_sources) && argv.length) {
         console.log(err);
         process.exit(1);
       }
-      console.log('Subreddit links:', subreddit_links.length);
+      console.log(chalk.grey(timeStamp()), 'Subreddit links:', subreddit_links.length);
       if (subreddit_links.length) updateSourcesFile(subreddit_links);
     });
   } else {
@@ -930,7 +937,7 @@ else if (argv.length && (argv[0].indexOf('http') == 0 || argv[0].indexOf('r/') =
   var output_dir = argv[1] || '.';
 
   options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
-  console.log('Sources file:', options.sources_file);
+  console.log(chalk.grey(timeStamp()), 'Sources file:', options.sources_file);
 
   if (utils.fileExists(options.sources_file)) {
     sources_store = utils.loadFromJsonFile(options.sources_file);

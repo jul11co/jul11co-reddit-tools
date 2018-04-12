@@ -6,7 +6,12 @@ Jul11Co's Reddit Tools
 - Archive subreddit's posts
 - Browse archived subreddit's posts & comments
 - Download subreddit's posts (images, Imgur galleries, Gfycat GIFs,...)
-- Scrape bot
+- Scrape & Archive bot
+
+### Thanks to
+
+- [nraw](https://github.com/Mobilpadde/NRAW.js) - Reddit's API
+- [nedb](https://github.com/louischatriot/nedb) - JavaScript Database
 
 ### License
 

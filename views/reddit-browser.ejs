@@ -36,7 +36,15 @@
       <div id="sidebar">
         <div class="row">
           <div class="col-md-12">
-              <p>Subreddits (<%=subreddits.length%>): <a href="/?reload_subreddits=1" class="btn btn-default" title="Reload subreddit list"><i class="fa fa-refresh fa-fw"></i></a></p>
+              <p>Subreddits (<%=subreddits.length%>): <a href="/?reload_subreddits=1" class="btn btn-default" title="Reload subreddit list"><i class="fa fa-refresh fa-fw"></i></a> <a href="#" id="toggle-add-subreddit-form" class="btn btn-default <%if(!enable_add){%>hidden<%}%>" title="Toggle add subreddit"><i class="fa fa-plus fa-fw"></i></a></p>
+              <form id="add-subreddit-form" class="hidden" role="form" action="/add" method="POST">
+                <div class="input-group">
+                  <input id="add-subreddit-name" type="text" name="blog" class="form-control" value="" placeholder="Enter subreddit name">
+                  <span class="input-group-btn">
+                    <button id="add-subreddit-form-submit" class="btn btn-default" type="submit">Add</button>
+                  </span>
+                </div>
+              </form>
 
             <%if (starred_subreddits.length) {%>
               <div class="list-group starred-subreddits">
@@ -249,6 +257,7 @@
         <table id="items" class="table table-hover table-responsive" style="font-size: 14px;">
           <thead class="hidden-sm hidden-xs">
             <tr>
+              <th style="width: 20px;"></th>
               <th style="max-width: 500px;">
                 <%if (!query.sort||query.sort=='title'){%>
                   <%if(query.order=='desc'){%>
@@ -312,20 +321,21 @@
               data-post-created-utc="<%=post.created_utc%>"
               data-post-self="<%=post.is_self?'true':'false'%>"
               data-post-favorite="<%=post.favorited?'true':'false'%>">
-              <a id="<%=post.id%>"></a>
+              <td style="width: 20px;">
+                <p style="margin-top: 10px;">
+                <%if (post.post_hint=='self' || post.is_self){%><span><i class="fa fa-reddit fa-lg fa-fw" style="color: grey;"></i></span>
+                <%}else if (post.post_hint=='image'){%><span><i class="fa fa-picture-o fa-lg fa-fw" style="color: grey;"></i></span>
+                <%}else if (post.post_hint=='video' || post.post_hint=='rich:video' || post.post_hint=='hosted:video'){%><span><i class="fa fa-file-video-o fa-lg fa-fw" style="color: grey;"></i></span>
+                <%}else if (post.post_hint=='link'){%><span><i class="fa fa-external-link fa-lg fa-fw" style="color: grey;"></i></span>
+                <%}else if (post.post_hint){%><span class="label label-default"><%=post.post_hint%></span>
+                <%}else{%><span><i class="fa fa-reddit fa-lg fa-fw" style="color: grey;"></i></span><%}%>
+                </p>
+                <%if (post.over_18){%><p><span class="label label-danger">18+</span></p><%}%> 
+              </td>
               <td style="max-width: 500px;">
-                <i class="fa fa-reddit fa-fw" style="color: grey;"></i> <a style="color: black;text-orientation: none;" class="open-external-link" href="https://reddit.com<%=post.permalink%>" target="_blank" title="<%=post.title%>"><b><%=ellipsisMiddle(post.title,60)%></b></a> 
+                <a id="<%=post.id%>"></a><a style="color: black;text-orientation: none;" class="open-external-link" href="https://reddit.com<%=post.permalink%>" target="_blank" title="<%=post.title%>"><b><%=post.title%></b></a> 
                 <p class="post-info-extra">
-                  <%if (post.is_self){%><span class="label label-default">Self</span><%}%> 
-                  <%if (post.over_18){%><span class="label label-danger">NSFW</span><%}%> 
-                  <!-- <span class="label label-default"><%=post.post_hint%></span> -->
-                  <%if (post.post_hint=='self'){%><i class="fa fa-reddit fa-fw" style="color: grey;"></i>
-                  <%}else if (post.post_hint=='image'){%><i class="fa fa-picture-o fa-fw" style="color: grey;"></i>
-                  <%}else if (post.post_hint=='video'){%><i class="fa fa-file-video-o fa-fw" style="color: grey;"></i>
-                  <%}else if (post.post_hint=='link'){%><i class="fa fa-external-link fa-fw" style="color: grey;"></i>
-                  <%}else if (post.post_hint){%><span class="label label-default"><%=post.post_hint%></span>
-                  <%}else{%><i class="fa fa-external-link fa-fw" style="color: grey;"></i>
-                  <%}%>
+                  <i class="fa fa-external-link fa-fw" style="color: grey;"></i> 
                   <a href="<%=post.url%>" class="open-external-link" target="_blank" style="color: grey;"><%=ellipsisMiddle(post.url,80)%></a>
                 </p>
                 <%if (post.selftext){%><blockquote style="font-size: 14px;margin-bottom: 0;"><%=post.selftext%></blockquote><%}%> 
@@ -445,6 +455,14 @@
               <div id="post-preview-left"><span style="display: inline-block;height: 100%;vertical-align: middle;"></span><a href="#" class="post-preview-button" title="Prev post (Left)"><i class="fa fa-chevron-left fa-2x fa-fw"></i></a></div> 
 
               <div id="post-preview-right"><span style="display: inline-block;height: 100%;vertical-align: middle;"></span><a href="#" class="post-preview-button" title="Next post (Right)"><i class="fa fa-chevron-right fa-2x fa-fw"></i></a></div> 
+
+              <div id="zoom-control" class="hidden">
+                <div id="zoom-control-inner">
+                  <span id="zoom-value" data-value="100" class="hidden"></span>
+                  <a href="#" id="zoom-in"><i class="fa fa-search-plus fa-2x fa-fw"></i></a>
+                  <a href="#" id="zoom-out"><i class="fa fa-search-minus fa-2x fa-fw"></i></a>
+                </div>
+              </div>
 
             </div>
 

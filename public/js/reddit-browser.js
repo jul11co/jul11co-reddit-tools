@@ -21,14 +21,14 @@ $(document).ready(function() {
       past  : "%s",
       s     : "now",
       ss    : "%ds",
-      m     : "1m",
-      mm    : "%dm",
+      m     : "1min",
+      mm    : "%dmins",
       h     : "1h",
       hh    : "%dh",
       d     : "1d",
       dd    : "%dd",
-      M     : "1m",
-      MM    : "%dm",
+      M     : "1mth",
+      MM    : "%dmths",
       y     : "1y",
       yy    : "%dy"
     }
@@ -56,6 +56,51 @@ $(document).ready(function() {
       window.location.href = post_url;
     }
   });
+
+  ////
+
+  $('#toggle-add-subreddit-form').on('click', function(event) {
+    event.preventDefault();
+    $('#add-subreddit-form').toggleClass('hidden');
+  });
+
+  $('#add-subreddit-form').on('submit', function(event) {
+    event.preventDefault();
+    var subreddit_name = $('#add-subreddit-name').val().trim();
+    if (subreddit_name && subreddit_name != '') {
+      var $button = $('#add-subreddit-form-submit');
+      var button_text = $button.text();
+      var resetButtonText = function(){ $button.text(button_text); };
+
+      $button.text('Adding...');
+      $.post('/add?subreddit=' + encodeURIComponent(subreddit_name), function(data) {
+        console.log(data);
+        if (data && data.existed) {
+          $button.text('Existed!');
+          setTimeout(resetButtonText, 2000);
+        } else if (data && data.queued) {
+          $button.text('Queued!');
+          setTimeout(resetButtonText, 2000);
+        } else if (data && data.error) {
+          $button.text('Error!');
+          setTimeout(resetButtonText, 2000);
+        } else {
+          resetButtonText();
+        }
+      }).fail(function(data) {
+        console.log(data);
+        if (data.responseJSON && data.responseJSON.error) {
+          $button.text('Error!');
+          setTimeout(resetButtonText, 2000);
+        } else {
+          $button.text('Error!');
+          setTimeout(resetButtonText, 2000);
+        }
+      });
+    }
+  });
+
+  ////
 
   $('#toggle-search-post-form').on('click', function(event) {
     event.preventDefault();
@@ -217,8 +262,8 @@ $(document).ready(function() {
 
     var $item = $('table#items tbody tr').eq(current_index);
     if ($item) {
-      if (isImagePost($item) || isVideoPost($item) 
-        || isGfycatPost($item) || isImgurPost($item) || isSelfPost($item) || isLinkPost($item)) {
+      if (isImagePost($item) || isVideoPost($item) || isSelfPost($item) || isLinkPost($item) 
+        || isGfycatPost($item) || isImgurPost($item)) {
         return $item;
       } else {
         return getNextPreviewItem();
@@ -239,8 +284,8 @@ $(document).ready(function() {
 
     var $item = $('table#items tbody tr').eq(current_index);
     if ($item) {
-      if (isImagePost($item) || isVideoPost($item) 
-        || isGfycatPost($item) || isImgurPost($item) || isSelfPost($item) || isLinkPost($item)) {
+      if (isImagePost($item) || isVideoPost($item) || isSelfPost($item) || isLinkPost($item) 
+        || isGfycatPost($item) || isImgurPost($item)) {
         return $item;
       } else {
         return getPrevPreviewItem();
@@ -261,7 +306,7 @@ $(document).ready(function() {
       comment_html += '<b style="font-size: 12px;">' + comment.author + '</b>';
     }
     // comment_html += ':';
-    comment_html += '<span class="post-preview-comment-body">' + markdownParser.render(comment.body) + '</span>';
+    comment_html += '<span class="post-preview-comment-body">' + markdownParser.render(unescapeHtml(comment.body)) + '</span>';
     comment_html += '<p style="font-size: 12px;margin-bottom: 0;">';
     comment_html += '<span><a href="https://www.reddit.com' + comment.permalink + 
       '" target="_blank" style="color: white;"><i class="fa fa-reddit fa-fw"></i></a></span> ';
@@ -302,7 +347,7 @@ $(document).ready(function() {
       op_html += '<b>' + post_info.author + '</b> <span class="label label-primary">OP</span>'+
         ' on <a href="https://www.reddit.com/r/' + post_info.subreddit + 
         '" target="_blank"><i>/r/' + post_info.subreddit + '</i></a>.';
-      op_html += '<span class="post-preview-comment-body">' + markdownParser.render(post_info.title||'') + '</span>';
+      op_html += '<span class="post-preview-comment-body">' + markdownParser.render(unescapeHtml(post_info.title||'')) + '</span>';
       op_html += '<p style="font-size: 12px;margin-bottom: 0;">';
       op_html += '<span><a href="' + post_info.permalink + 
         '" target="_blank" style="color: white;"><i class="fa fa-reddit fa-fw"></a></i></span> ';
@@ -440,7 +485,7 @@ $(document).ready(function() {
       } else if (data) {
         var preview_html = '';
         preview_html += '<span style="display: inline-block;height: 100%;vertical-align: middle;"></span>';
-        var selftext = markdownParser.render(data.selftext||'');
+        var selftext = markdownParser.render(unescapeHtml(data.selftext||''));
         preview_html += '<div class="selftext" style="display: inline-block;vertical-align: middle;">'
         preview_html += '<span style="font-size:12px;">/r/' + data.subreddit;
         preview_html += ' &middot; ' + moment(data.created_utc*1000).fromNow();
@@ -501,6 +546,11 @@ $(document).ready(function() {
     );
     $("#previewModal").modal('show');
     
+    if (post_preview_image_size == 'fit-width' || post_preview_image_size == 'max') {
+      showZoom();
+      applyZoom();
+    }
+
     $("<img/>").on('load', function(){
       var file_info = $('#post-preview-file-info').text();
       file_info += ' - W:' + this.width + ' x H:' + this.height;
@@ -640,7 +690,7 @@ $(document).ready(function() {
             data.images[0].src + '" alt="' + (data.post_title || 'Picture') + ' - 1">';
 
           if (data.images.length > 1) {
-            for (var i = 0; i < data.images.length; i++) {
+            for (var i = 1; i < data.images.length; i++) {
               preview_html += '<img class="fadeIn animated lazyload extra ' 
               + (post_preview_image_size||'fit-width') + '" ' 
               + 'src="data:image/gif;base64,R0lGODdhAQABAPAAAMPDwwAAACwAAAAAAQABAAACAkQBADs=" ' +
@@ -650,6 +700,11 @@ $(document).ready(function() {
 
           $('#post-preview-content').html(preview_html);
           
+          if (post_preview_image_size == 'fit-width' || post_preview_image_size == 'max') {
+            showZoom();
+            applyZoom();
+          }
+
           // $("<img/>").on('load', function(){
           //   var file_info = $('#post-preview-file-info').text();
           //   file_info += ' - W:' + this.width + ' x H:' + this.height;
@@ -721,6 +776,8 @@ $(document).ready(function() {
       //   $('#post-preview-comments-container').removeClass('inline');
       // }
 
+      hideZoom();
+
       if (isSelfPost($item)) {
         previewSelfPost($item, post_id, post_link, post_info);
       } else if (isImagePost($item)) {
@@ -757,24 +814,50 @@ $(document).ready(function() {
     }
   }
 
+  var hideZoom = function() {
+    $('#zoom-control').addClass('hidden');
+  }
+
+  var showZoom = function() {
+    $('#zoom-control').removeClass('hidden');
+  }
+
+  var resetZoom = function() {
+    // $('#zoom-value').attr('data-value', '100');
+    $('#post-preview-content img').css('width', 'auto');
+  }
+
+  var applyZoom = function() {
+    var zoom_value = $('#zoom-value').attr('data-value');
+    $('#post-preview-content img').css('width', zoom_value+'%');
+  }
+
   var togglePreviewImageSize = function() {
     // 'fit' -> 'fit-width' -> 'fit-height' -> 'max' -> 'fit' -> ...
     if (post_preview_image_size == 'fit') {
       post_preview_image_size = 'fit-width';
       $('#post-preview-image-resize-button').html('<i class="fa fa-arrows-h fa-lg fa-fw"></i>');
       $('#post-preview-content img').removeClass('fit').addClass('fit-width');
+      showZoom();
+      applyZoom();
     } else if (post_preview_image_size == 'fit-width') {
       post_preview_image_size = 'fit-height';
       $('#post-preview-image-resize-button').html('<i class="fa fa-arrows-v fa-lg fa-fw"></i>');
       $('#post-preview-content img').removeClass('fit-width').addClass('fit-height');
+      hideZoom();
+      resetZoom();
     } else if (post_preview_image_size == 'fit-height') {
       post_preview_image_size = 'max';
       $('#post-preview-image-resize-button').html('<b style="font-size: 16px;line-height: 12px;">1:1</b>');
       $('#post-preview-content img').removeClass('fit-height').addClass('max');
+      showZoom();
+      applyZoom();
     } else {
       post_preview_image_size = 'fit';
       $('#post-preview-image-resize-button').html('<i class="fa fa-arrows fa-lg fa-fw"></i>');
       $('#post-preview-content img').removeClass('max').addClass('fit');
+      hideZoom();
+      resetZoom();
     }
   }
 
@@ -962,6 +1045,9 @@ $(document).ready(function() {
     $('#post-preview-right a').toggleClass('hidden');
     $('#post-preview-title-container').toggleClass('hidden');
     // $('#post-preview-comments-container').toggleClass('hidden');
+    if (post_preview_image_size == 'fit-width' || post_preview_image_size == 'max') {
+      $('#zoom-control').toggleClass('hidden');
+    }
   });
 
   $('#post-preview-next').on('click', function(event) {
@@ -1011,8 +1097,8 @@ $(document).ready(function() {
   $('table#items tbody tr').each(function() {
     var $item = $(this);
 
-    if (isImagePost($item) || isVideoPost($item) 
-      || isGfycatPost($item) || isImgurPost($item) || isSelfPost($item) || isLinkPost($item)) {
+    if (isImagePost($item) || isVideoPost($item) || isSelfPost($item) || isLinkPost($item) 
+      || isGfycatPost($item) || isImgurPost($item)) {
       previewable_posts_index_map[$item.index()] = previewable_posts_count;
       previewable_posts_count++;
     }
@@ -1022,8 +1108,8 @@ $(document).ready(function() {
     // event.preventDefault();
     var $item = $(this);
 
-    if (isImagePost($item) || isVideoPost($item) 
-      || isGfycatPost($item) || isImgurPost($item) || isSelfPost($item) || isLinkPost($item)) {
+    if (isImagePost($item) || isVideoPost($item) || isSelfPost($item) || isLinkPost($item) 
+      || isGfycatPost($item) || isImgurPost($item)) {
       $('table#items tbody tr').removeClass('info');
       $item.addClass('info');
 
@@ -1036,6 +1122,40 @@ $(document).ready(function() {
 
   $('#post-preview-file-info-toggle').on('click', function() {
     $('#post-preview-file-info').toggleClass('hidden');
+  });
+
+  $('#zoom-control #zoom-in').on('click', function(event) {
+    event.preventDefault();
+    var zoom_value = $('#zoom-value').attr('data-value');
+    zoom_value = parseInt(zoom_value);
+    if (!isNaN(zoom_value)) {
+      zoom_value += 5;
+      if (post_preview_image_size == 'fit-width' && zoom_value >= 100) {
+        zoom_value = 100;
+        $('#zoom-control #zoom-in').addClass('disable');
+      } else {
+        $('#zoom-control #zoom-in').removeClass('disable');
+      }
+      $('#zoom-value').attr('data-value', zoom_value);
+      $('#post-preview-content img').css('width', zoom_value+'%');
+    }
+  });
+
+  $('#zoom-control #zoom-out').on('click', function(event) {
+    event.preventDefault();
+    var zoom_value = $('#zoom-value').attr('data-value');
+    zoom_value = parseInt(zoom_value);
+    if (!isNaN(zoom_value)) {
+      zoom_value -= 5;
+      if (zoom_value <= 10) {
+        zoom_value = 10;
+        $('#zoom-control #zoom-out').addClass('disable');
+      } else {
+        $('#zoom-control #zoom-out').removeClass('disable');
+      }
+      $('#zoom-value').attr('data-value', zoom_value);
+      $('#post-preview-content img').css('width', zoom_value+'%');
+    }
   });
 
   /* Comments */

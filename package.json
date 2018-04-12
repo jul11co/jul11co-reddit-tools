@@ -30,6 +30,7 @@
     "lockfile": "^1.0.3",
     "moment": "^2.18.1",
     "nedb": "^1.8.0",
+    "node-redis-pubsub": "^2.0.0",
     "nraw": "^0.2.5",
     "open": "0.0.5",
     "pretty-seconds": "^0.2.1",

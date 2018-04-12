@@ -23,6 +23,8 @@ var JsonStore = require('jul11co-jsonstore');
 var JobQueue = require('jul11co-jobqueue');
 var utils = require('jul11co-utils');
 
+var NRP = require('node-redis-pubsub');
+
 var downloader = require('jul11co-wdt').Downloader;
 
 var RedditScraper = require('./lib/reddit-scraper');
@@ -30,13 +32,15 @@ var RedditPostDownloader = require('./lib/reddit-post-downloader');
 var GfycatScraper = require('./lib/gfycat-scraper');
 var ImgurScraper = require('./lib/imgur-scraper');
 
+var package = require('./package.json');
+
 function printUsage() {
   console.log('Usage: reddit-browse-posts <data-dir> [OPTIONS]');
   console.log('       reddit-browse-posts --sources [--sources-file /path/to/sources.json] [--live] [OPTIONS]');
   console.log('');
-  console.log('       reddit-browse-posts --live r/SUBREDDIT [OPTIONS]');
-  console.log('       reddit-browse-posts --live https://www.reddit.com/r/SUBREDDIT [OPTIONS]');
-  console.log('');
+  // console.log('       reddit-browse-posts --live r/SUBREDDIT [OPTIONS]');
+  // console.log('       reddit-browse-posts --live https://www.reddit.com/r/SUBREDDIT [OPTIONS]');
+  // console.log('');
   console.log('       reddit-browse-posts --config');
   console.log('       reddit-browse-posts --config --secure [true|false]');
   console.log('       reddit-browse-posts --config --password PASSWORD');
@@ -44,7 +48,9 @@ function printUsage() {
   console.log('OPTIONS:');
   console.log('     --verbose                   : verbose');
   console.log('     --no-cache                  : do not cache images,...');
-  console.log('     --no-download               : do not download posts');
+  console.log('');
+  console.log('     --support-download          : support posts downloading');
+  console.log('     --support-add               : support add new subreddit (need to run reddit-scrape-bot --support-add)');
   console.log('');
 }
 
@@ -134,7 +140,7 @@ var data_dir = '.';
 if (options.sources) {
   data_dir = argv[0] || '.';
   if (options.sources_file) {
-    options.sources_file = path.join('.', 'sources.json');
+    // options.sources_file = path.join('.', 'sources.json');
     data_dir = path.dirname(options.sources_file);
   } else {
     options.sources_file = path.join(data_dir, 'sources.json');
@@ -154,6 +160,19 @@ console.log('Data directory:', data_dir);
 
 if (options.live) {
   console.log('LIVE mode!');
+}
+
+var nrp = null;
+
+if (options.support_add) {
+  nrp = new NRP({
+    port: 6379,       // Port of your locally running Redis server
+    scope: 'reddit'   // Use a scope to prevent two NRPs from sharing messages
+  });
+
+  nrp.on("error", function(err){
+    if (err && err.message) console.log('NRP Error:', err.message);
+  });
 }
 
 var io = null;
@@ -369,6 +388,14 @@ var startServer = function(done) {
   app.use(express.static(path.join(__dirname, 'public')));
   app.use(express.static(cache_dir));
 
+  app.get('/info', function(req, res) {
+    return res.json({
+      name: 'Reddit Archive Browser',
+      version: package.version,
+      data_dir: data_dir
+    });
+  });
+
   // Authentication Middleware
 
   var auth = function(req, res, next) {
@@ -501,7 +528,8 @@ var startServer = function(done) {
 
       return res.render('load-subreddit', {
         query: req.query,
-        enable_download: !options.no_download,
+        enable_download: options.support_download,
+        enable_add: options.support_add,
         subreddits: subreddits,
         starred_subreddits: starred_subreddits,
         unstarred_subreddits: unstarred_subreddits,
@@ -614,7 +642,8 @@ var startServer = function(done) {
 
     var render_params = {
       query: query,
-      enable_download: !options.no_download,
+      enable_download: options.support_download,
+      enable_add: options.support_add,
       subreddits: subreddits,
       starred_subreddits: starred_subreddits,
       unstarred_subreddits: unstarred_subreddits,
@@ -762,25 +791,27 @@ var startServer = function(done) {
     res.json({unfavorited: true});
   });
 
-  // GET /download?post_id=...
-  app.post('/download', auth, function(req, res) {
-    if (!req.query.post_id) {
-      return res.status(400).json({error: 'Missing post_id'});
-    }
-    // get post info
-    getPostInfo(req.query.post_id, function(err, post) {
-      if (err) return res.status(500).json({error: err.message});
-      if (!post) return res.status(404).json({error: 'Post not found'});
-
-      console.log('Download post:', post.title, '-', post.url);
-      // download the post
-      post_downloader.downloadPost(post, function(err) {
+  if (options.support_download) {
+    // GET /download?post_id=...
+    app.post('/download', auth, function(req, res) {
+      if (!req.query.post_id) {
+        return res.status(400).json({error: 'Missing post_id'});
+      }
+      // get post info
+      getPostInfo(req.query.post_id, function(err, post) {
         if (err) return res.status(500).json({error: err.message});
+        if (!post) return res.status(404).json({error: 'Post not found'});
 
-        res.json({downloaded: true});
+        console.log('Download post:', post.title, '-', post.url);
+        // download the post
+        post_downloader.downloadPost(post, function(err) {
+          if (err) return res.status(500).json({error: err.message});
+
+          res.json({downloaded: true});
+        });
       });
     });
-  });
+  }
 
   // GET /gfycat?url=...
   app.get('/gfycat', auth, function(req, res) {
@@ -877,6 +908,28 @@ var startServer = function(done) {
       });
     });
   });
+
+  if (options.support_add) {
+    // GET /add?subreddit=...
+    app.post('/add', auth, function(req, res) {
+      var subreddit = req.query.subreddit || req.body.subreddit;
+      if (!subreddit) {
+        return res.status(400).json({error: 'Missing subreddit'});
+      }
+      subreddit = subreddit.trim();
+
+      if (all_subreddits[subreddit]) {
+        return res.json({existed: true});
+      }
+
+      nrp.emit('reddit:new-subreddit', {
+        subreddit: subreddit
+      });
+
+      console.log('Add subreddit:', subreddit);
+      res.json({queued: true});
+    });
+  }
 
   // GET /star?subreddit=...
   app.post('/star', auth, function(req, res) {

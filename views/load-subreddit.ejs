@@ -41,7 +41,7 @@
             <%if (starred_subreddits.length) {%>
               <div class="list-group starred-subreddits">
               <%starred_subreddits.forEach(function(subreddit,idx){%>
-                <a class="list-group-item <%if(subreddit.name == current_subreddit){%>active<%}%>" href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.nsfw){%><span class="label label-danger">NSFW</span><%}%> <span><i class="fa fa-star fa-fw"></i></span></a>
+                <a class="list-group-item <%if(subreddit.name == query.load_subreddit){%>active<%}%>" href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.nsfw){%><span class="label label-danger">NSFW</span><%}%> <span><i class="fa fa-star fa-fw"></i></span></a>
               <%});%>
               </div>
             <%}%>
@@ -50,7 +50,7 @@
               <%if (!subreddit_grouped) {%>
               <div class="list-group all-subreddits">
                 <%unstarred_subreddits.forEach(function(subreddit,idx){%>
-                <a class="list-group-item <%if(subreddit.name == current_subreddit){%>active<%}%>" href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.nsfw){%><span class="label label-danger">NSFW</span><%}%> </a>
+                <a class="list-group-item <%if(subreddit.name == query.load_subreddit){%>active<%}%>" href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.nsfw){%><span class="label label-danger">NSFW</span><%}%> </a>
                 <%});%>
               </div>
               <%} else {%>
@@ -60,7 +60,7 @@
                 <a class="list-group-item sub" href="#"><%=group_name%> <span class="badge badge-primary"><%=group.length%></span> </a>
                 <ul class="sub-items">
                   <%group.forEach(function(subreddit,idx){%>
-                  <a class="list-group-item <%if(subreddit.name == current_subreddit){%>active<%}%>" href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.nsfw){%><span class="label label-danger">NSFW</span><%}%> </a>
+                  <a class="list-group-item <%if(subreddit.name == query.load_subreddit){%>active<%}%>" href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.nsfw){%><span class="label label-danger">NSFW</span><%}%> </a>
                   <%});%>
                 </ul>
                 <%}%>
@@ -80,11 +80,11 @@
         <div id="subreddits-selection" style="margin: 15px 0;">
           <span>Select subreddit (<%=subreddits.length%>): </span>
           <div class="dropdown" style="display: inline-block;">
-            <button class="btn btn-default dropdown-toggle" type="button" data-toggle="dropdown">/r/<%=current_subreddit%>
+            <button class="btn btn-default dropdown-toggle" type="button" data-toggle="dropdown">/r/<%=query.load_subreddit%>
             <span class="caret"></span></button>
             <ul class="dropdown-menu scrollable-menu">
               <%subreddits.forEach(function(subreddit,idx){%>
-                <%if (subreddit.name == current_subreddit) {%>
+                <%if (subreddit.name == query.load_subreddit) {%>
               <li class="active"><a href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.starred){%><span><i class="fa fa-star fa-fw"></i></span><%}%></a></li>
                 <%}else{%>
               <li><a href="/?load_subreddit=<%=subreddit.name%>">/r/<%=subreddit.name%> <%if(subreddit.starred){%><span><i class="fa fa-star fa-fw"></i></span><%}%></a></li>
@@ -96,12 +96,6 @@
         </div>
         <%}%>
 
-        <%var current_subreddit_starred = false;
-        subreddits.forEach(function(subreddit){
-          if (subreddit.name == current_subreddit && subreddit.starred) {
-            current_subreddit_starred = true;
-          }
-        });%>
         <h4>
           Loading subreddit: <a href="https://www.reddit.com/r/<%=query.load_subreddit%>" target="_blank">/r/<%=query.load_subreddit%></a> ...
         </h4>

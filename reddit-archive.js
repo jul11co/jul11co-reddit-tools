@@ -23,20 +23,21 @@ var prettySeconds = require('pretty-seconds');
 
 function printUsage() {
   console.log('Usage: ');
-  console.log('       reddit-archive <URL | r/SUBREDDIT> [--nsfw] [OPTIONS]');
+  console.log('       reddit-archive <URL | r/SUBREDDIT> [<URL2 | r/SUBREDDIT2>] [...] [--nsfw] [OPTIONS]');
   console.log('');
   console.log('       reddit-archive --update [--nsfw] [OPTIONS]');
   console.log('       reddit-archive --list [--nsfw]');
-  console.log('       reddit-archive --add <DATA-DIR> <URL> [URL2] [...] [--scrape-interval=<SECONDS>] [--nsfw] [OPTIONS]');
-  console.log('       reddit-archive --remove <DATA-DIR> <URL> [URL2] [...]');
+  console.log('       reddit-archive --add <URL> [URL2] [...] [--scrape-interval=<SECONDS>] [--nsfw] [OPTIONS]');
+  console.log('       reddit-archive --remove <URL> [URL2] [...]');
   console.log('');
   console.log('       reddit-archive --import <URL>');
   console.log('       reddit-archive --import --from-html <HTML-FILE>');
   console.log('');
   console.log('OPTIONS:');
-  console.log('       --sources-file <path-to-sources.json>  : Set custom path to sources.json');
-  console.log('       --download-posts                       : Download posts');
-  console.log('       --export-posts                         : Export posts');
+  console.log('     --sources-file <path-to-sources.json>  : Set custom path to sources.json');
+  console.log('');
+  console.log('     --download-posts                       : Download posts');
+  console.log('     --export-posts                         : Export posts');
   console.log('');
 }
   
@@ -265,7 +266,7 @@ function saveJsonFileSafe(data, target_file) {
 
 ///
 
-function updateSource(source, output_dir) {
+function scrapeSource(source, output_dir) {
   if (reddit_sources[source.url] && reddit_sources[source.url].updating) {
     return;
   } else if (!reddit_sources[source.url]) {
@@ -358,13 +359,15 @@ function updateSource(source, output_dir) {
   });
 }
 
-function updateSourcePeriodically(source, output_dir, interval) {
+function scrapeSourcePeriodically(source, output_dir, interval) {
   setInterval(function() {
-    updateSource(source, output_dir);
+    scrapeSource(source, output_dir);
   }, interval);
 
-  updateSource(source, output_dir);
+  scrapeSource(source, output_dir);
 }
+
+///
 
 function loadSourcesFromDir(data_dir) {
   if (utils.fileExists(path.join(data_dir, 'reddit.json'))) {
@@ -393,6 +396,8 @@ function loadSourcesFromDir(data_dir) {
     }
   }
 }
+
+///
 
 function saveSourceConfig(source_url, source_config, output_dir) {
   var subreddit = getSubreddit(source_url);
@@ -429,6 +434,8 @@ function showSourceConfig(source_config) {
     }
   }
 }
+
+///
 
 function leftPad(str, spaces) {
   if (!str) return '';
@@ -475,6 +482,8 @@ function sortSources(sources, sort_field, sort_order) {
     });
   }
 }
+
+///
 
 function _listSources(options) {
   var sources = [];
@@ -595,7 +604,8 @@ function _addSources(sources_to_add, output_dir, options) {
   console.log(chalk.grey(timeStamp()), chalk.bold('new sources'), new_sources_count);
 
   if (options.sources_file) {
-    utils.saveToJsonFile(sources_store, options.sources_file);
+    // utils.saveToJsonFile(sources_store, options.sources_file);
+    saveJsonFileSafe(sources_store, options.sources_file);
   }
 }
 
@@ -622,7 +632,7 @@ function _removeSources(sources_to_remove, options) {
   }
 }
 
-function _updateSource(source_url, options) {
+function _updateSource(source_url, output_dir, options) {
   var source = {
     url: source_url
   };
@@ -670,13 +680,13 @@ function _updateSource(source_url, options) {
 
   source.config = sources_store[source_url] || {};
 
-  updateSource(source, output_dir, function() {
+  scrapeSource(source, output_dir, function() {
     // utils.saveToJsonFile(sources_store, options.sources_file);
     saveJsonFileSafe(sources_store, options.sources_file);
   });
 }
 
-function _updateSources(options) {
+function _updateSources(output_dir, options) {
   var sources = [];
 
   for (var source_url in sources_store) {
@@ -696,11 +706,11 @@ function _updateSources(options) {
       config: sources[i].config
     };
 
-    updateSource(sources[i], output_dir);
+    scrapeSource(sources[i], output_dir);
   }
 }
 
-function _watchSources(options) {
+function _watchSources(output_dir, options) {
   var sources = [];
 
   for (var source_url in sources_store) {
@@ -724,7 +734,7 @@ function _watchSources(options) {
     source_scrape_interval = source_scrape_interval || default_scrape_interval 
     source_scrape_interval = source_scrape_interval * 1000; // to ms
 
-    updateSourcePeriodically({
+    scrapeSourcePeriodically({
       url: sources[i].url,
       config: sources[i].config
     }, output_dir, source_scrape_interval);
@@ -737,7 +747,7 @@ function _watchSources(options) {
 if (options.update || options.update_sources) {
   console.log(chalk.grey(timeStamp()), chalk.cyan('scrape from sources'));
 
-  var output_dir = argv[1] || '.';
+  var output_dir = '.';
 
   options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
   console.log(chalk.grey(timeStamp()), 'Sources file:', options.sources_file);
@@ -758,12 +768,12 @@ if (options.update || options.update_sources) {
     saveJsonFileSafe(sources_store, options.sources_file);
   });
 
-  _updateSources(options);
+  _updateSources(output_dir, options);
 } 
 else if (options.watch || options.watch_sources) {
   console.log(chalk.grey(timeStamp()), chalk.cyan('scrape from sources'));
 
-  var output_dir = argv[1] || '.';
+  var output_dir = '.';
 
   options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
   console.log(chalk.grey(timeStamp()), 'Sources file:', options.sources_file);
@@ -780,12 +790,12 @@ else if (options.watch || options.watch_sources) {
     saveJsonFileSafe(sources_store, options.sources_file);
   });
 
-  _watchSources(options);
+  _watchSources(output_dir, options);
 } 
 else if (options.list || options.list_sources) {
   console.log(chalk.grey(timeStamp()), chalk.cyan('reddit sources'));
 
-  var output_dir = argv[1] || '.';
+  var output_dir = '.';
 
   options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
   console.log(chalk.grey(timeStamp()), 'Sources file:', options.sources_file);
@@ -808,10 +818,10 @@ else if ((options.add || options.add_source) && argv.length) {
     return callback();
   }
 
-  var output_dir = argv[0];
+  var output_dir = '.';
 
   var sources_to_add = [];
-  for (var i = 1; i < argv.length; i++) {
+  for (var i = 0; i < argv.length; i++) {
     if (argv[i].indexOf('http') == 0 && sources_to_add.indexOf(argv[i]) == -1) {
       sources_to_add.push(argv[i].replace('http://reddit.com/', 'https://www.reddit.com/'));
     } else if (argv[i].indexOf('r/') == 0 && sources_to_add.indexOf(argv[i]) == -1) {
@@ -845,10 +855,10 @@ else if ((options.remove || options.remove_source) && argv.length) {
     return callback();
   }
 
-  var output_dir = argv[0];
+  var output_dir = '.';
 
   var sources_to_remove = [];
-  for (var i = 1; i < argv.length; i++) {
+  for (var i = 0; i < argv.length; i++) {
     if (argv[i].indexOf('http') == 0 && sources_to_remove.indexOf(argv[i]) == -1) {
       sources_to_remove.push(argv[i].replace('http://reddit.com/', 'https://www.reddit.com/'));
     } else if (argv[i].indexOf('r/') == 0 && sources_to_remove.indexOf(argv[i]) == -1) {
@@ -878,7 +888,7 @@ else if ((options.import || options.import_sources) && argv.length) {
   var subredditLinkExtractor = require('./lib/subreddit-link-extractor.js')
 
   var updateSourcesFile = function(subreddit_links) {
-    var output_dir = argv[1] || '.';
+    var output_dir = '.';
 
     options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
     console.log(chalk.grey(timeStamp()), 'Sources file:', options.sources_file);
@@ -923,18 +933,32 @@ else if ((options.import || options.import_sources) && argv.length) {
   }
 }
 else if (argv.length && (argv[0].indexOf('http') == 0 || argv[0].indexOf('r/') == 0)) {
-  var source_url = argv[0];
+  // var source_url = argv[0];
+  // if (argv[0].indexOf('r/') == 0) {
+  //   source_url = 'https://www.reddit.com/' + argv[0];
+  // }
+  // if (lastChar(source_url) == '/') {
+  //   source_url = removeLastChar(source_url);
+  // }
 
-  if (argv[0].indexOf('r/') == 0) {
-    source_url = 'https://www.reddit.com/' + argv[0];
+  // console.log(chalk.grey(timeStamp()), chalk.cyan('scrape from URL'), source_url);
+
+  var sources_to_archive = [];
+  for (var i = 0; i < argv.length; i++) {
+    if (argv[i].indexOf('http') == 0 && sources_to_archive.indexOf(argv[i]) == -1) {
+      sources_to_archive.push(argv[i].replace('http://reddit.com/', 'https://www.reddit.com/'));
+    } else if (argv[i].indexOf('r/') == 0 && sources_to_archive.indexOf(argv[i]) == -1) {
+      sources_to_archive.push('https://www.reddit.com/' + argv[i]);
+    }
   }
-  if (lastChar(source_url) == '/') {
-    source_url = removeLastChar(source_url);
-  }
+  sources_to_archive = sources_to_archive.map(function(source_url) {
+    if (lastChar(source_url) == '/') {
+      return removeLastChar(source_url);
+    }
+    return source_url;
+  });
 
-  console.log(chalk.grey(timeStamp()), chalk.cyan('scrape from URL'), source_url);
-
-  var output_dir = argv[1] || '.';
+  var output_dir = '.';
 
   options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
   console.log(chalk.grey(timeStamp()), 'Sources file:', options.sources_file);
@@ -943,7 +967,10 @@ else if (argv.length && (argv[0].indexOf('http') == 0 || argv[0].indexOf('r/') =
     sources_store = utils.loadFromJsonFile(options.sources_file);
   }
 
-  _updateSource(source_url, options);
+  sources_to_archive.forEach(function(source_url) {
+    _updateSource(source_url, output_dir, options);
+  });
+
 } else {
   printUsage();
   process.exit();

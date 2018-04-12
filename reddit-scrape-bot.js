@@ -13,6 +13,8 @@ var JobQueue = require('jul11co-jobqueue');
 var spawn = require('child_process').spawn;
 var fork = require('child_process').fork;
 
+var NRP = require('node-redis-pubsub');
+
 var prettySeconds = require('pretty-seconds');
 var Spinner = require('cli-spinner').Spinner;
 
@@ -22,10 +24,7 @@ spinner.setSpinnerString('|/-\\');
 function printUsage() {
   console.log('Usage:');
   console.log('       reddit-scrape-bot --start [data-dir] [--download-posts] [--export-ports]');
-  console.log('');
   console.log('       reddit-scrape-bot --list [data-dir]');
-  console.log('       reddit-scrape-bot --add <URL> [data-dir] [--download-posts] [--scrape-interval=<SECONDS>]');
-  console.log('       reddit-scrape-bot --remove <URL> [data-dir]');
   console.log('');
   console.log('Set custom path to sources.json');
   console.log('       reddit-scrape-bot [...] --sources-file <path-to-sources.json>');
@@ -61,16 +60,6 @@ for (var i = 2; i < process.argv.length; i++) {
   }
 }
 
-process.on('SIGINT', function() {
-  console.log("\nCaught interrupt signal");
-  process.exit();
-});
-
-var verbose = false;
-if (process.argv.indexOf('--verbose') != -1) {
-  verbose = true;
-}
-
 if (typeof options.scrape_interval == 'string') {
   options.scrape_interval = parseInt(options.scrape_interval);
   if (isNaN(options.scrape_interval)) {
@@ -92,9 +81,29 @@ var default_scrape_interval = 60*30; // 30 minutes
 
 var scrape_queue = new JobQueue();
 var download_queue = new JobQueue();
+var update_queue = new JobQueue();
 
 var sources_store = {};
 var reddit_sources = {};
+
+var nrp = null;
+
+if (options.support_add) {
+  nrp = new NRP({
+    port: 6379,       // Port of your locally running Redis server
+    scope: 'reddit'   // Use a scope to prevent two NRPs from sharing messages
+  });
+
+  nrp.on("error", function(err){
+    if (err && err.message) console.log('NRP Error:', err.message);
+  });
+}
+
+process.on('SIGINT', function() {
+  console.log("\nCaught interrupt signal");
+  if (nrp) nrp.quit();
+  process.exit();
+});
 
 ///
 
@@ -121,6 +130,45 @@ function directoryExists(directory) {
   return false;
 }
 
+function getDateString(date) {
+  return moment(date).fromNow();
+}
+
+function saveJsonFileSafe(data, target_file) {
+  var current_data = {};
+  if (utils.fileExists(target_file)) {
+    current_data = utils.loadFromJsonFile(target_file);
+  }
+  current_data = Object.assign(current_data, data);
+  utils.saveToJsonFile(current_data, target_file);
+}
+
+function leftPad(str, spaces) {
+  if (!str) return '';
+  if (str.length >= spaces) return str;
+  while (str.length < spaces) {
+    str = ' ' + str;
+  }
+  return str;
+}
+
+function rightPad(str, spaces) {
+  if (!str) return '';
+  if (str.length >= spaces) return str;
+  while (str.length < spaces) {
+    str += ' ';
+  }
+  return str;
+}
+
+var lastChar = function(str) {
+  return str.substring(str.length-1);
+}
+
+var removeLastChar = function(str) {
+  return str.substring(0, str.length-1);
+}
+
 function executeCommand(cmd, args, callback) {
   if (!options.verbose) spinner.start();
   var command = spawn(cmd, args || [], {maxBuffer: 1024 * 500});
@@ -144,10 +192,6 @@ function executeCommand(cmd, args, callback) {
       callback();  
     }
   });
-}
-
-function getDateString(date) {
-  return moment(date).fromNow();
 }
 
 function executeScript(script, args, callback) {
@@ -215,6 +259,8 @@ function executeScript(script, args, callback) {
   });
 }
 
+///
+
 function scrapeSubreddit(url, output_dir, done) {
   var args = [
     url,
@@ -246,47 +292,76 @@ function downloadSubredditPosts(data_dir, done) {
 
 ///
 
-function updateSource(source, output_dir) {
-  if (reddit_sources[source.url] && reddit_sources[source.url].updating) {
-    return;
-  } else if (!reddit_sources[source.url]) {
-    reddit_sources[source.url] = {};
-  }
-  reddit_sources[source.url].updating = true;
+function downloadPosts(source, output_dir) {
+  download_queue.pushJob(source, function(source, done) {
+    var subreddit = getSubreddit(source.url);
+    var subreddit_output_dir = path.join(output_dir, 'r', subreddit);
 
-  if (options.verbose) {
-    console.log(chalk.grey(timeStamp()), chalk.cyan('update source'), source.url);
-  }
+    console.log(chalk.grey(timeStamp()), chalk.magenta('download posts'), 'r/'+subreddit);
 
-  scrape_queue.pushJob(source, function(source, done) {
+    downloadSubredditPosts(subreddit_output_dir, function(err) {
+      if (err) {
+        console.log(chalk.grey(timeStamp()), chalk.red('download posts failed.'), 'r/'+subreddit);
+        return done(err);
+      }
+      setTimeout(done, 1000);
+      // cb();
+    });
+  }, function(err) {
+    if (err) console.log(err);
+
+    // console.log('');
+    console.log(chalk.grey(timeStamp()), 'download queue', (download_queue.jobCount()-1));
+  });
+}
+
+function scrapeSource(source_url, output_dir) {
+  scrape_queue.pushJob({url: source_url}, function(source, done) {
+
+    if (reddit_sources[source.url] && reddit_sources[source.url].updating) {
+      console.log(chalk.grey(timeStamp()), 'already updating:', source.url);
+      return done();
+    } else if (!reddit_sources[source.url]) {
+      reddit_sources[source.url] = {};
+    }
+    reddit_sources[source.url].updating = true;
+
+    if (options.verbose) {
+      console.log(chalk.grey(timeStamp()), chalk.cyan('scrape source'), source.url);
+    }
 
     var subreddit = getSubreddit(source.url);
 
-    if (source.config && source.config.last_scraped) {
-      var last_scraped = source.config.last_scraped;
+    if (sources_store[source.url] && sources_store[source.url].last_scraped) {
+      var last_scraped = sources_store[source.url].last_scraped;
       if (typeof last_scraped == 'string') {
+        console.log(chalk.grey(timeStamp()), 'last scraped (string):', subreddit, last_scraped);
         last_scraped = new Date(last_scraped);
       }
       
-      var source_scrape_interval = (source.config.scrape_interval || default_scrape_interval) * 1000;
+      var source_scrape_interval = (sources_store[source.url].scrape_interval || default_scrape_interval) * 1000;
       var now = new Date();
-      // console.log('Last scraped:', last_scraped);
       if (now.getTime() - last_scraped.getTime() < source_scrape_interval) {
+        console.log(chalk.grey(timeStamp()), 'last scraped:', subreddit, moment(last_scraped).fromNow());
         return done();
       }
     }
+
+    var source_scrape_delay = (sources_store[source.url].scrape_delay || default_scrape_delay) * 1000;
 
     console.log(chalk.grey(timeStamp()), chalk.magenta('scrape'), 'r/'+subreddit);
 
     scrapeSubreddit(source.url, output_dir, function(err) {
       if (err) {
-        console.log(chalk.grey(timeStamp()), chalk.red('update failed.'), 'r/'+subreddit);
+        console.log(chalk.grey(timeStamp()), chalk.red('scrape failed.'), 'r/'+subreddit);
         return done(err);
       }
 
-      if (source.config) source.config.last_scraped = new Date();
+      if (sources_store[source.url]) {
+        sources_store[source.url].last_scraped = new Date();
+      }
 
-      if (!source.config.no_export && (options.download_posts || options.export_posts)) {
+      if (!sources_store[source.url].no_export && (options.download_posts || options.export_posts)) {
         var subreddit_output_dir = path.join(output_dir, 'r', subreddit);
 
         console.log(chalk.grey(timeStamp()), chalk.magenta('export posts'), 'r/'+subreddit);
@@ -296,37 +371,21 @@ function updateSource(source, output_dir) {
             return done();
           }
 
-          if (source.config.download_posts && options.download_posts) {
-            download_queue.pushJob(source, function(source, done2) {
-              console.log(chalk.grey(timeStamp()), chalk.magenta('download posts'), 'r/'+subreddit);
-
-              downloadSubredditPosts(subreddit_output_dir, function(err) {
-                if (err) {
-                  console.log(chalk.grey(timeStamp()), chalk.red('download posts failed.'), 'r/'+subreddit);
-                  return done2(err);
-                }
-                setTimeout(done2, 1000);
-                // cb();
-              });
-            }, function(err) {
-              if (err) console.log(err);
-
-              // console.log('');
-              console.log(chalk.grey(timeStamp()), 'download queue', (download_queue.jobCount()-1));
-            });
+          if (sources_store[source.url].download_posts && options.download_posts) {
+            downloadPosts(source, output_dir);
           }
 
-          setTimeout(done, (source.config.scrape_delay || default_scrape_delay) * 1000);
+          setTimeout(done, source_scrape_delay);
         });
       } else {
-        setTimeout(done, (source.config.scrape_delay || default_scrape_delay) * 1000);
+        setTimeout(done, source_scrape_delay);
       }
       // cb();
     });
   }, function(err) {
     if (err) console.log(err);
 
-    reddit_sources[source.url].updating = false;
+    reddit_sources[source_url].updating = false;
 
     if (options.sources_file) {
       // utils.saveToJsonFile(sources_store, options.sources_file);
@@ -334,21 +393,13 @@ function updateSource(source, output_dir) {
     }
 
     // console.log('');
-    // console.log('scrape queue', (scrape_queue.jobCount()-1));
+    console.log(chalk.grey(timeStamp()), 'scrape queue', (scrape_queue.jobCount()-1));
   });
 }
 
-function updateSourcePeriodically(source, output_dir, interval) {
-  setInterval(function() {
-    updateSource(source, output_dir);
-  }, interval);
-
-  updateSource(source, output_dir);
-}
+///
 
 function loadSourcesFromDir(data_dir) {
-  var subreddit_list = [];
-
   var files = fs.readdirSync(path.join(data_dir, 'r'));
   for (var i = 0; i < files.length; i++) {
     var subreddit_config_file = path.join(data_dir, 'r', files[i], 'reddit.json');
@@ -402,40 +453,7 @@ function showSourceConfig(source_config) {
   }
 }
 
-function saveJsonFileSafe(data, target_file) {
-  var current_data = {};
-  if (utils.fileExists(target_file)) {
-    current_data = utils.loadFromJsonFile(target_file);
-  }
-  current_data = Object.assign(current_data, data);
-  utils.saveToJsonFile(current_data, target_file);
-}
-
-function leftPad(str, spaces) {
-  if (!str) return '';
-  if (str.length >= spaces) return str;
-  while (str.length < spaces) {
-    str = ' ' + str;
-  }
-  return str;
-}
-
-function rightPad(str, spaces) {
-  if (!str) return '';
-  if (str.length >= spaces) return str;
-  while (str.length < spaces) {
-    str += ' ';
-  }
-  return str;
-}
-
-var lastChar = function(str) {
-  return str.substring(str.length-1);
-}
-
-var removeLastChar = function(str) {
-  return str.substring(0, str.length-1);
-}
+////
 
 function sortSources(sources, sort_field, sort_order) {
   if (sort_order=='desc') {
@@ -457,64 +475,7 @@ function sortSources(sources, sort_field, sort_order) {
   }
 }
 
-////
-
-if (options.start) {
-  console.log(chalk.grey(timeStamp()), chalk.cyan('scrape from sources'));
-
-  var output_dir = argv[1] || '.';
-
-  options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
-
-  if (options.sources_file && utils.fileExists(options.sources_file)) {
-    sources_store = utils.loadFromJsonFile(options.sources_file);
-  } 
-  // else if (directoryExists(path.join(output_dir, 'r'))) {
-  //   loadSourcesFromDir(output_dir);
-  // }
-
-  process.on('exit', function() {
-    // utils.saveToJsonFile(sources_store, options.sources_file);
-    saveJsonFileSafe(sources_store, options.sources_file);
-  });
-
-  var sources = [];
-  for (var source_url in sources_store) {
-    if (!sources_store[source_url].disable) {
-      sources.push({
-        url: source_url,
-        config: sources_store[source_url]
-      });
-    }
-  }
-
-  for (var i = 0; i < sources.length; i++) {
-    var source = {
-      url: sources[i].url,
-      config: sources[i].config
-    };
-
-    var source_scrape_interval = source.config.scrape_interval || options.scrape_interval;
-    source_scrape_interval = source_scrape_interval || default_scrape_interval 
-    source_scrape_interval = source_scrape_interval * 1000; // to ms
-
-    updateSourcePeriodically({
-      url: sources[i].url,
-      config: sources[i].config
-    }, output_dir, source_scrape_interval);
-  }
-} 
-else if (options.list || options.list_sources) {
-  console.log(chalk.grey(timeStamp()), chalk.cyan('reddit sources'));
-
-  var output_dir = argv[1] || '.';
-
-  options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
-
-  if (options.sources_file && utils.fileExists(options.sources_file)) {
-    sources_store = utils.loadFromJsonFile(options.sources_file);
-  }
-  
+function _listSources() {
   var sources = [];
   for (var source_url in sources_store) {
     sources.push({
@@ -564,29 +525,97 @@ else if (options.list || options.list_sources) {
     index++;
     console.log(leftPad('' + index, 2) + '. ' + chalk.blue(source.name));
     showSourceConfig(source.config);
-  })
-  process.exit();
+  });
 }
-else if ((options.add || options.add_source) && argv.length) {
-  var sources_to_add = [];
-  for (var i = 0; i < argv.length; i++) {
-    if (argv[i].indexOf('http') == 0 && sources_to_add.indexOf(argv[i]) == -1) {
-      sources_to_add.push(argv[i]);
-    } else if (argv[i].indexOf('r/') == 0 && sources_to_add.indexOf(argv[i]) == -1) {
-      sources_to_add.push('https://www.reddit.com/' + argv[i]);
+
+function scrapeSourcePeriodically(source_url, output_dir, interval) {
+  setInterval(function() {
+    scrapeSource(source_url, output_dir);
+  }, interval);
+
+  scrapeSource(source_url, output_dir);
+}
+
+function _updateSources(output_dir) {
+  var source_urls = [];
+  for (var source_url in sources_store) {
+    if (!sources_store[source_url].disable) {
+      source_urls.push(source_url);
     }
   }
-  sources_to_add = sources_to_add.map(function(source_url) {
-    if (lastChar(source_url) == '/') {
-      return removeLastChar(source_url);
-    }
-    return source_url;
-  });
 
-  var output_dir = argv[1] || '.';
+  for (var i = 0; i < source_urls.length; i++) {
+    var source_scrape_interval = sources_store[source_urls[i]].scrape_interval || options.scrape_interval || default_scrape_interval;
+    scrapeSourcePeriodically(source_urls[i], output_dir, source_scrape_interval * 1000); // to ms
+  }
+}
+
+function _updateSource(source_url, output_dir) {
+  var source = {
+    url: source_url
+  };
+
+  var source_is_new = false;
+
+  if (sources_store[source_url]) {
+    console.log(chalk.grey(timeStamp()), chalk.magenta('already added'), source_url);
+    
+    var source_config = sources_store[source_url];
+    var update_source = false;
+
+    if (options.scrape_interval && source_config.scrape_interval != options.scrape_interval) {
+      source_config.scrape_interval = options.scrape_interval;
+      update_source = true;
+    }
+    if (options.download_posts && source_config.download_posts != options.download_posts) {
+      source_config.download_posts = true;
+      update_source = true;
+    }
+    if (options.nsfw && !source_config.nsfw) {
+      source_config.nsfw = true;
+      update_source = true;
+    }
+    if (options.sfw && source_config.nsfw) {
+      delete source_config.nsfw;
+      update_source = true;
+    }
+
+    if (update_source) {
+      sources_store[source_url] = source_config;
+      saveSourceConfig(source_url, source_config, output_dir);
+    }
+  } else {
+    console.log(chalk.grey(timeStamp()), chalk.green('new source'), source_url);
+    
+    source_is_new = true;
+
+    var source_config = {
+      added_at: new Date()
+    };
+    if (options.scrape_interval) source_config.scrape_interval = options.scrape_interval;
+    if (options.download_posts) source_config.download_posts = true;
+    if (options.nsfw) source_config.nsfw = true;
+
+    sources_store[source_url] = source_config;
+    saveSourceConfig(source_url, source_config, output_dir);
+  }
+
+  if (source_is_new) {
+    var source_scrape_interval = sources_store[source_url].scrape_interval || options.scrape_interval || default_scrape_interval;
+    scrapeSourcePeriodically(source_url, output_dir, source_scrape_interval * 1000); // to ms
+  } else {
+    scrapeSource(source_url, output_dir);
+  }
+}
+
+////
+
+if (options.start) {
+  console.log(chalk.grey(timeStamp()), chalk.cyan('scrape from sources'));
+
+  var output_dir = argv[0] || '.';
 
   options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
-
   if (options.sources_file && utils.fileExists(options.sources_file)) {
     sources_store = utils.loadFromJsonFile(options.sources_file);
   } 
@@ -594,99 +623,35 @@ else if ((options.add || options.add_source) && argv.length) {
   //   loadSourcesFromDir(output_dir);
   // }
 
-  for (var i = 0; i < sources_to_add.length; i++) {
-    var source_url = sources_to_add[i];
-    if (source_url.slice(-1) == '/') {
-      source_url = source_url.slice(0, source_url.length-1);
-    }
-
-    if (sources_store[source_url]) {
-      console.log(chalk.grey(timeStamp()), chalk.magenta('already added'), source_url);
-      
-      var source_config = sources_store[source_url];
-      showSourceConfig(source_config);
-
-      var update_source = false;
-      if (options.scrape_interval && source_config.scrape_interval != options.scrape_interval) {
-        source_config.scrape_interval = options.scrape_interval;
-        update_source = true;
-      }
-      if (options.download_posts && source_config.download_posts != options.download_posts) {
-        source_config.download_posts = true;
-        update_source = true;
-      }
-
-      if (update_source) {
-        sources_store[source_url] = source_config;
-
-        console.log(chalk.grey(timeStamp()), chalk.green('update source'), source_url);
-        
-        showSourceConfig(source_config);
-        saveSourceConfig(source_url, source_config, output_dir);
-      }
-    } else {
-      console.log(chalk.grey(timeStamp()), chalk.green('new source'), source_url);
-      
-      var source_config = {
-        added_at: new Date()
-      };
-      if (options.scrape_interval) source_config.scrape_interval = options.scrape_interval;
-      if (options.download_posts) source_config.download_posts = true;
-
-      sources_store[source_url] = source_config;
-
-      showSourceConfig(source_config);
-
-      saveSourceConfig(source_url, source_config, output_dir);
-    }
-  }
-
-  if (options.sources_file) {
+  process.on('exit', function() {
     // utils.saveToJsonFile(sources_store, options.sources_file);
     saveJsonFileSafe(sources_store, options.sources_file);
-  }
-
-  process.exit();
-} 
-else if ((options.remove || options.remove_source) && argv.length) {
-  var sources_to_remove = [];
-  for (var i = 0; i < argv.length; i++) {
-    if (argv[i].indexOf('http') == 0 && sources_to_remove.indexOf(argv[i]) == -1) {
-      sources_to_remove.push(argv[i]);
-    } else if (argv[i].indexOf('r/') == 0 && sources_to_remove.indexOf(argv[i]) == -1) {
-      sources_to_remove.push('https://www.reddit.com/' + argv[i]);
-    }
-  }
-  sources_to_remove = sources_to_remove.map(function(source_url) {
-    if (lastChar(source_url) == '/') {
-      return removeLastChar(source_url);
-    }
-    return source_url;
   });
 
-  var output_dir = argv[1] || '.';
+  if (nrp && options.support_add) {
+    nrp.on('reddit:new-subreddit', function(data) {
+      console.log('Event [reddit:new-subreddit] - ' + data.subreddit);
+
+      if (data.subreddit) {
+        console.log('add subreddit: ' + data.subreddit);
+        _updateSource('https://www.reddit.com/r/' + data.subreddit, output_dir);
+      }
+    });
+  }
+
+  _updateSources(output_dir);
+} 
+else if (options.list || options.list_sources) {
+  console.log(chalk.grey(timeStamp()), chalk.cyan('reddit sources'));
+
+  var output_dir = argv[0] || '.';
 
   options.sources_file = options.sources_file || path.join(output_dir, 'sources.json');
-
   if (options.sources_file && utils.fileExists(options.sources_file)) {
     sources_store = utils.loadFromJsonFile(options.sources_file);
   }
-
-  for (var i = 0; i < sources_to_remove.length; i++) {
-    var source_url = sources_to_remove[i];
-
-    if (!sources_store[source_url]) {
-      console.log(chalk.grey(timeStamp()), chalk.magenta('already removed'), source_url);
-    } else {
-      console.log(chalk.grey(timeStamp()), chalk.red('remove source'), source_url);
-      delete sources_store[source_url];
-    }
-  }
-
-  if (options.sources_file) {
-    // utils.saveToJsonFile(sources_store, options.sources_file);
-    saveJsonFileSafe(sources_store, options.sources_file);
-  }
+  
+  _listSources();
 
   process.exit();
 } else {
